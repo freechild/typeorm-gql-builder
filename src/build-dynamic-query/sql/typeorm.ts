@@ -1,0 +1,522 @@
+import * as R from 'ramda';
+import {
+    QueryBuilder,
+    SelectQueryBuilder,
+    UpdateQueryBuilder,
+    DeleteQueryBuilder,
+    OrderByCondition,
+} from 'typeorm';
+import { CreateDynamicSqlDto, Operation, SqlQuery } from '../dto/sql.dto';
+
+interface JoinInfo {
+    query?: string;
+    table?: string;
+    alias?: string;
+}
+enum QueryDataActionKey {
+    create = 'create',
+    connect = 'connect',
+    update = 'update',
+}
+
+interface IRelationModel {
+    table: string;
+    parentKey: string;
+    childKey: string;
+}
+
+interface IUpdate {
+    data: string[];
+    where: string[];
+}
+
+export function getFieldQuery(
+    model: CreateDynamicSqlDto,
+    operation: Operation = Operation.Select,
+    index: number,
+    sql:
+        | SelectQueryBuilder<any>
+        | UpdateQueryBuilder<any>
+        | DeleteQueryBuilder<any>,
+    size?: number,
+    type?: string,
+) {
+    const runner = sql as SelectQueryBuilder<any>;
+    if (size) model.fields.first = 1;
+    const result = fieldParser(model, operation, index, runner, type);
+    return result as QueryBuilder<any>;
+}
+
+export function fieldParser(
+    model: CreateDynamicSqlDto,
+    operation: Operation = Operation.Select,
+    index: number,
+    sql:
+        | SelectQueryBuilder<any>
+        | UpdateQueryBuilder<any>
+        | DeleteQueryBuilder<any>,
+    type?: string,
+) {
+    const field = model.fields;
+    let orderValue: string[] = [];
+    let limit = 10;
+    if (!R.isNil(model.selectSet) && !Array.isArray(model.selectSet))
+        model.selectSet = [model.selectSet];
+
+    if (!R.isNil(field.first) || !R.isNil(field.last)) {
+        limit = field.first ?? field.last;
+    }
+    if (field.after || field.before || field.skip) {
+        if (field.after) {
+            field.where[`${model.alias}.${model.pk}__gte`] = field.after;
+        } else if (field.before) {
+            field.where[`${model.alias}.${model.pk}__lte`] = field.before;
+        } else if (field.skip)
+            field.where[`${model.alias}.${model.pk}__gt`] = field.skip;
+    }
+
+    if (!R.isEmpty(field.where) || !R.isEmpty(model.isJoin)) {
+        if (
+            !R.isEmpty(model.isJoin) &&
+            !R.isNil(model.isJoin) &&
+            sql instanceof SelectQueryBuilder
+        ) {
+            const result = join(model, index, field, sql);
+            orderValue = orderValue.concat(result.orderValue);
+            field.group = true;
+        } else {
+            const result = where(field.where, index, field);
+            sql.where(result.query, result.params);
+            orderValue = orderValue.concat(result.orderValue);
+        }
+    }
+
+    if (sql instanceof SelectQueryBuilder) {
+        sql.orderBy(order(model, field.orderBy, orderValue));
+        if (field.page) {
+            // TODO:
+            const page = (field.page - 1) * limit;
+            sql.offset(page);
+        }
+        if (field.group) {
+            group(model.selectSet, sql);
+        } else {
+            const alias = sql.expressionMap.mainAlias ? sql.alias : '';
+
+            if (type === 'mysql') {
+                sql.addSelect(`
+                \`${alias}\`.*,
+                \`${alias}\`.${model.pk} _id
+                `);
+            } else {
+                sql.addSelect(`"${alias}".*,"${alias}".${model.pk} _id`);
+            }
+        }
+        sql.limit(limit);
+    }
+
+    return sql;
+}
+
+export function where(
+    target: Object,
+    index: number = 0,
+    fields?: CreateDynamicSqlDto['fields'],
+    joinInfoList?: JoinInfo[],
+    operator: 'AND' | 'OR' = 'AND',
+) {
+    let linkWord: '' | 'AND' | 'OR' = '';
+    let query = '';
+    let params = {};
+    let i: number = 0;
+    let orderValue: string[] = [];
+    for (const [key, value] of Object.entries(target)) {
+        linkWord = i > 0 ? operator : '';
+        if (key === 'AND' || key === 'OR') {
+            linkWord = i > 0 ? operator : '';
+            query += ` ${linkWord} (`;
+            value.forEach((childValue: any, j: number) => {
+                linkWord = j > 0 ? key : '';
+                const result = where(childValue, index, fields, undefined, key);
+                query += ` ${linkWord} ${result.query}`;
+                params = R.mergeRight(params, result.params);
+                index = result.index;
+                orderValue = orderValue.concat(result.orderValue);
+            });
+            query += ')';
+        } else {
+            const ketSet: string[] = key.split('__');
+            const result = makeWhereQuery(
+                ketSet,
+                value,
+                index,
+                fields,
+                joinInfoList,
+            );
+            if (result?.where) {
+                query += ` ${linkWord} ${result.where}`;
+                params = R.mergeRight(params, result.params);
+                index = result.index;
+                orderValue = orderValue.concat(result.orderValue);
+            }
+        }
+        if (!R.isEmpty(query)) ++i;
+    }
+
+    return { query, index, params, orderValue };
+}
+
+function makeWhereQuery<model>(
+    whereOption: string[],
+    whereValue: any,
+    index: number,
+    fields: CreateDynamicSqlDto['fields'],
+    joinInfoList?: JoinInfo[],
+): { where: string; params: Object; index: number; orderValue?: string[] } {
+    if (R.isEmpty(whereValue)) {
+        return;
+    }
+    switch (whereOption[1]) {
+        case 'not':
+            index += 1;
+            return {
+                where: `${whereOption[0]} <> :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'in':
+            index += 1;
+            return {
+                where: `${whereOption[0]} in (:...k${index})`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'not_in':
+            index += 1;
+            return {
+                where: `${whereOption[0]} not in (:...k${index})`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'lt':
+            index += 1;
+            return {
+                where: `${whereOption[0]} < :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'lte':
+            index += 1;
+            return {
+                where: `${whereOption[0]} <= :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'gt':
+            index += 1;
+            return {
+                where: `${whereOption[0]} > :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'gte':
+            index += 1;
+            return {
+                where: `${whereOption[0]} >= :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'contains':
+            index += 1;
+            return {
+                where: `${whereOption[0]} like :k${index}`,
+                params: { [`k${index}`]: `%${whereValue.toLowerCase()}%` },
+                index,
+            };
+        case 'not_contains':
+            index += 1;
+            return {
+                where: `${whereOption[0]} not like :k${index}`,
+                params: { [`k${index}`]: `%${whereValue.toLowerCase()}%` },
+                index,
+            };
+        case 'starts_with':
+            index += 1;
+            return {
+                where: `${whereOption[0]} like :k${index}`,
+                params: { [`k${index}`]: `${whereValue.toLowerCase()}%` },
+                index,
+            };
+        case 'not_starts_with':
+            index += 1;
+            return {
+                where: `${whereOption[0]} not like :k${index}`,
+                params: { [`k${index}`]: `${whereValue.toLowerCase()}%` },
+                index,
+            };
+        case 'ends_with':
+            index += 1;
+            return {
+                where: `${whereOption[0]} like :k${index}`,
+                params: { [`k${index}`]: `%${whereValue.toLowerCase()}` },
+                index,
+            };
+        case 'not_ends_with':
+            index += 1;
+            return {
+                where: `${whereOption[0]} not like :k${index}`,
+                params: { [`k${index}`]: `%${whereValue.toLowerCase()}` },
+                index,
+            };
+        case 'json_contains':
+            index += 1;
+            return {
+                where: `${whereOption[0]}::jsonb %> :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        case 'json_filter':
+        // params.push(whereValue.key);
+        // params.push(whereValue.value);
+        // query = `${whereOption[0]}::json ->> ${(index =
+        //     index + 1)} = ${(index = index + 1)}`;
+        // return {
+        //     // where: `${whereOption[0]}::jsonb %> :k${index}`,
+        //     where: `
+        //         ${whereOption[0]}::json ->> ${(index =
+        //         index + 1)} = ${(index = index + 1)}
+        //     `,
+        //     params: { [`k${index}`]: whereValue },
+        //     index,
+        // };
+        case 'exist':
+            if (typeof whereValue === 'boolean') {
+                index += 1;
+                return {
+                    where: `${whereOption[0]} is ${
+                        whereValue ? 'not' : ''
+                    } null`,
+                    params: [],
+                    index,
+                };
+            }
+            break;
+
+        case 'between': {
+            if (
+                !whereValue ||
+                !Array.isArray(whereValue) ||
+                whereValue.length > 2
+            ) {
+                break;
+            }
+            let where = `${whereOption[0]} between`;
+            const params = {};
+            whereValue.map((value, i = 0) => {
+                ++index;
+                if (i > 0) {
+                    where += ' AND ';
+                }
+                where += ` :k${index} `;
+                params[`k${index}`] = value;
+                ++i;
+            });
+
+            return {
+                where,
+                params,
+                index,
+            };
+        }
+        case 'search':
+        case 'search_in': {
+            const regStr = /[-']/gi;
+            const tempStr = whereValue.replace(regStr, ' ');
+            index += 1;
+            fields.group = true;
+            return {
+                where: `to_tsquery(f_unaccent(:k${index}) || ':*') @@  ${whereOption[0]} `,
+                params: { [`k${index}`]: `'''${tempStr}'''` },
+                index,
+                orderValue: [
+                    whereOption[0],
+                    `to_tsquery(f_unaccent(:k${index}) || ':*')`,
+                ],
+            };
+        }
+        case 'not_include': {
+            index += 1;
+            const splitKey = whereOption[0].split('.');
+            const alias = splitKey[0];
+            const targetNode = joinInfoList.find(
+                (node) => node.alias === alias,
+            );
+            return {
+                where: `NOT EXISTS (SELECT 1 FROM ${targetNode.table} WHERE ${targetNode.query} AND ${splitKey[1]} IN (:...k${index}))`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+        }
+
+        case 'parent': {
+            index += 1;
+            const key =
+                typeof whereValue === 'string'
+                    ? `parent_${whereValue.replace(/-/g, '_')}_${index}`
+                    : `parent_${whereValue}_${index}`;
+            return {
+                where: `${whereOption[0]} = :${key}`,
+                params: { [`${key}`]: whereValue },
+                index,
+            };
+        }
+        default:
+            index += 1;
+            return {
+                where: `${whereOption[0]} = :k${index}`,
+                params: { [`k${index}`]: whereValue },
+                index,
+            };
+    }
+}
+
+function join<model>(
+    model: CreateDynamicSqlDto,
+    index: number,
+    fields: CreateDynamicSqlDto['fields'],
+    sql: SelectQueryBuilder<model>,
+) {
+    const isJoin = model.isJoin;
+    const joinInfoList: JoinInfo[] = [];
+    let orderValue: string[] = [];
+    Object.keys(isJoin).forEach((key) => {
+        let joinInfo: JoinInfo = {};
+        const splitKey = key.split('__');
+        const operation = splitKey[1].split('*AS*')[0];
+        let ChildtableName = splitKey[0];
+        const as = key.split('*AS*')[1];
+        const relationModel = model.info?.relations?.find(
+            (v: any) => v.table === ChildtableName,
+        );
+        let parentKey = model.info.pk;
+        let childKey = model.info.pk;
+        if (model.info.relations && relationModel) {
+            parentKey = relationModel.childKey;
+            childKey = relationModel.parentKey ?? relationModel.childKey;
+            ChildtableName = relationModel.table ?? ChildtableName;
+            // sql.leftJoin(
+            //     `${model.alias}.${ChildtableName}`,
+            //     as,
+            //     `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
+            // );
+
+            // joinInfo.query = `${model.info.alias}.${parentKey} = ${ChildtableName}.${childKey} `;
+        } else {
+            // sql.leftJoin(
+            //     `${model.alias}.${ChildtableName}`,
+            //     as,
+            //     `${model.info.alias}.${model.info.pk} = ${as}.${model.info.pk} `,
+            // );
+            // joinInfo.query = `${model.info.alias}.${model.info.pk} = ${ChildtableName}.${model.info.pk} `;
+        }
+
+        //   queryBuilder.leftJoin("(SELECT 1)", "dummy", "TRUE LEFT JOIN LATERAL (SELECT * FROM bookings bk WHERE bt.startTime < bk.endTime) bk ON bk.clinicId = bt.clinicId");
+        if (operation === 'lateral') {
+        } else {
+            sql.leftJoin(
+                `${model.alias}.${ChildtableName}`,
+                as,
+                `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
+            );
+        }
+        joinInfo.query = `${model.info.alias}.${parentKey} = ${ChildtableName}.${childKey} `;
+        joinInfo.table = ChildtableName;
+        joinInfo.alias = as;
+        joinInfoList.push(joinInfo);
+        if (R.isEmpty(isJoin[key]) === false) {
+            const self = model.info.childNode.find(
+                (v) => v.name === ChildtableName,
+            );
+            const childBin: CreateDynamicSqlDto = {
+                name: self.name,
+                alias: self.alias,
+                isJoin: isJoin[key],
+                info: self,
+            };
+            join(childBin, index, fields, sql);
+        }
+    });
+    if (model.fields?.where) {
+        const result = where(model.fields.where, index, fields, joinInfoList);
+        orderValue.concat(result.orderValue);
+        sql.where(result.query, result.params);
+    }
+    // query = result.query;
+    // index = result.index;
+    // params = result.params;
+    // orderValue = result.orderValue;
+    // return { query, index, params, orderValue };
+    return { orderValue };
+}
+
+function order(
+    model: CreateDynamicSqlDto,
+    orderBy: string[] | string = model.pk,
+    orderValue: string[] = [],
+) {
+    let result: OrderByCondition | string = {};
+    if (!R.isNil(orderBy) && !Array.isArray(orderBy)) orderBy = [orderBy];
+    orderBy.map((order) => {
+        const [key, direction] = order.split('__');
+        if (typeof result === 'string') return;
+        switch (key) {
+            case 'rand': {
+                result = 'random()';
+                break;
+            }
+            case 'SIMILARITY': {
+                result = 'random()';
+                break;
+            }
+            default: {
+                if (direction === 'ASC' || direction === 'DESC') {
+                    result[`${model.alias}.${key}`] = direction;
+                    (model.selectSet as String[]).push(`${model.alias}.${key}`);
+                } else if (direction === 'SIMILARITY' && orderValue.length) {
+                    result[`MAX(ts_rank_cd(${orderValue}) )`] = 'DESC';
+                } else {
+                    result[`${model.alias}.${key}`] = 'ASC';
+                    (model.selectSet as String[]).push(`${model.alias}.${key}`);
+                }
+                break;
+            }
+        }
+    });
+
+    (model.selectSet as String[]) = R.uniq(model.selectSet as String[]);
+    return result;
+}
+
+function group<model>(
+    selectSet: string | string[],
+    sql: SelectQueryBuilder<model>,
+) {
+    if (!R.isNil(selectSet) && !Array.isArray(selectSet))
+        selectSet = [selectSet];
+    let i = 0;
+    selectSet.map((key) => {
+        let triggerFromGroupBy: 'groupBy' | 'addGroupBy' = 'groupBy';
+        let triggerFromSelect: 'select' | 'addSelect' = 'select';
+        if (i !== 0) {
+            triggerFromGroupBy = 'addGroupBy';
+            triggerFromSelect = 'addSelect';
+        }
+        sql[triggerFromGroupBy](key);
+        sql[triggerFromSelect](
+            key,
+            key.includes('.') ? key.split('.')[1] : key,
+        );
+        ++i;
+    });
+    return;
+}

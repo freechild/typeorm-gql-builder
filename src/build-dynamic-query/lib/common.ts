@@ -67,6 +67,7 @@ export function makeQuery({
     fieldNodes,
     fragments,
     fields,
+    returnType,
 }: {
     operation: OperationDefinitionNode;
     fieldNodes: FieldNode[];
@@ -74,6 +75,7 @@ export function makeQuery({
         [key: string]: FragmentDefinitionNode;
     };
     fields: any;
+    returnType?: 'Array' | 'Object';
 }): OperationNode {
     const query = { ...R.clone(operation) };
     const customFieldNodes = R.clone(fieldNodes);
@@ -93,7 +95,7 @@ export function makeQuery({
     );
 
     query.selectionSet.selections = customFieldNodes;
-    return { query, fragmentsQuery, fragments, fields };
+    return { query, fragmentsQuery, fragments, fields, returnType };
 }
 
 function findUsingValues(
@@ -123,7 +125,7 @@ function findUsingValues(
         if (target) {
             target.map((i: any, idx) => {
                 if (!i.selectionSet) delete i.alias;
-                // Check:
+                // // Check:
                 else {
                     delete target[idx];
                 }

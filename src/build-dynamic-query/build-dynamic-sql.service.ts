@@ -13,6 +13,8 @@ import {
     GraphQLSchema,
     OperationDefinitionNode,
     print,
+    GraphQLOutputType,
+    GraphQLObjectType,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -80,11 +82,13 @@ export class BuildDynamicSqlService<Model> {
             fragments,
             schema,
             operation,
+            returnType,
         }: {
             fieldNodes?: FieldNode[];
             fragments?: ObjMap<FragmentDefinitionNode>;
             schema: GraphQLSchema;
             operation: OperationDefinitionNode;
+            returnType: GraphQLOutputType;
         },
         tableInfo?: TableInfo,
         parentInfo?: any,
@@ -234,6 +238,10 @@ export class BuildDynamicSqlService<Model> {
                     fieldNodes,
                     fragments,
                     fields,
+                    returnType:
+                        returnType instanceof GraphQLObjectType
+                            ? 'Object'
+                            : 'Array',
                 }),
             };
         });
@@ -274,6 +282,7 @@ export class BuildDynamicSqlService<Model> {
                 fieldNodes,
                 fragments,
                 schema,
+                returnType,
             },
             modelInfo,
             getTableInfo(parentType.name, schema, parent),
@@ -496,7 +505,7 @@ export class BuildDynamicSqlService<Model> {
                 operation,
                 parentKeyName: model.parentPrimaryKey,
                 cacheKey: model.cacheKeyValue,
-                cacheName: model.cacheKey,
+                cacheKeyName: model.cacheKey,
                 query,
                 params,
                 typeorm: result as QueryBuilder<Model>,
@@ -670,7 +679,7 @@ export class BuildDynamicSqlService<Model> {
                 operation,
                 parentKeyName: model.parentPrimaryKey,
                 cacheKey: model.cacheKeyValue,
-                cacheName: model.cacheKey,
+                cacheKeyName: model.cacheKey,
                 query,
                 params,
                 typeorm: result,

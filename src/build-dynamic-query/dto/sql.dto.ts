@@ -13,6 +13,7 @@ export interface OperationNode {
     fields: {
         [key: string]: any;
     };
+    returnType: 'Array' | 'Object';
 }
 
 export class CreateDynamicSqlDto {

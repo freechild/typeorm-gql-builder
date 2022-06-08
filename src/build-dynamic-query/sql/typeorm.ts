@@ -1,3 +1,11 @@
+import {
+    FieldNode,
+    GraphQLList,
+    GraphQLNonNull,
+    GraphQLObjectType,
+    Kind,
+    getLocation,
+} from 'graphql';
 import * as R from 'ramda';
 import {
     QueryBuilder,
@@ -103,6 +111,33 @@ export function fieldParser(
             group(model.selectSet, sql);
         } else {
             const alias = sql.expressionMap.mainAlias ? sql.alias : '';
+            const selectionsNode = [];
+            model.gqlNode.query.selectionSet;
+
+            Object.entries(model.info.fields).map(([key, value]) => {
+                if (
+                    (value.type instanceof GraphQLNonNull ||
+                        value.type instanceof GraphQLList) &&
+                    (value.type.ofType instanceof GraphQLObjectType ||
+                        value.type.ofType instanceof GraphQLList ||
+                        value.type.ofType instanceof GraphQLNonNull)
+                ) {
+                } else {
+                    const node: FieldNode = {
+                        kind: Kind.FIELD,
+                        arguments: [],
+                        name: {
+                            kind: Kind.NAME,
+                            value: value.name,
+                        },
+                    };
+                    selectionsNode.push(node);
+                }
+            });
+
+            (
+                model.gqlNode.query.selectionSet.selections[0] as FieldNode
+            ).selectionSet.selections = [...selectionsNode];
 
             if (type === 'mysql') {
                 sql.addSelect(`

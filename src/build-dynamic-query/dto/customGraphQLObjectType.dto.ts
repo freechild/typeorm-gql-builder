@@ -22,7 +22,7 @@ export class CustomGraphQLObjectType extends GraphQLObjectType {
         childKey: string;
     }[];
     childNode: CustomGraphQLObjectType[];
-    // _fields?: any;
+    fields?: GraphQLFieldMap<any, any>;
 }
 
 export interface CustomGraphQLFieldNode extends FieldNode {

@@ -7,6 +7,7 @@ import {
     OrderByCondition,
 } from 'typeorm';
 import { CreateDynamicSqlDto, Operation, SqlQuery } from '../dto/sql.dto';
+import { GqlError } from '../filters/all-exceptions.filter';
 
 interface JoinInfo {
     query?: string;
@@ -466,6 +467,11 @@ function order(
 ) {
     let result: OrderByCondition | string = {};
     if (!R.isNil(orderBy) && !Array.isArray(orderBy)) orderBy = [orderBy];
+    if (!orderBy)
+        throw new GqlError(
+            `define Directives model first (@${model.name})`,
+            '400',
+        );
     orderBy.map((order) => {
         const [key, direction] = order.split('__');
         if (typeof result === 'string') return;

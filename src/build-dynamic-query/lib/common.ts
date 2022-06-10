@@ -7,6 +7,7 @@ import {
     GraphQLOutputType,
     GraphQLSchema,
     OperationDefinitionNode,
+    GraphQLList,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -60,6 +61,17 @@ export function getReturnModelInfo(models: GraphQLOutputType) {
     };
     const ModelInfo: CustomGraphQLObjectType = getModel(models);
     return ModelInfo;
+}
+
+export function getReturnType(node: GraphQLOutputType) {
+    if (node instanceof GraphQLList) {
+        return 'Array';
+    } else if (node instanceof GraphQLObjectType) {
+        return 'Object';
+    } else {
+        return getReturnType((node as any).ofType);
+    }
+    return 'Array';
 }
 
 export function makeQuery({

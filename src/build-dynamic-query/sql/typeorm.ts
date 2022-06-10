@@ -92,7 +92,9 @@ export function fieldParser(
         ) {
             const result = join(model, index, field, sql);
             orderValue = orderValue.concat(result.orderValue);
-            field.group = true;
+            if (sql.expressionMap.mainAlias) {
+                field.group = true;
+            }
         } else {
             const result = where(field.where, index, field);
             sql.where(result.query, result.params);
@@ -111,28 +113,26 @@ export function fieldParser(
             group(model.selectSet, sql);
         } else {
             const alias = sql.expressionMap.mainAlias ? sql.alias : '';
-            const selectionsNode = [];
-            model.gqlNode.query.selectionSet;
+            let selectionsNode = [];
+            (
+                model.gqlNode.query.selectionSet.selections[0] as FieldNode
+            ).selectionSet.selections.map<any>((i) => {
+                selectionsNode.push(i);
+            });
 
-            Object.entries(model.info.fields).map(([key, value]) => {
-                if (
-                    (value.type instanceof GraphQLNonNull ||
-                        value.type instanceof GraphQLList) &&
-                    (value.type.ofType instanceof GraphQLObjectType ||
-                        value.type.ofType instanceof GraphQLList ||
-                        value.type.ofType instanceof GraphQLNonNull)
-                ) {
-                } else {
-                    const node: FieldNode = {
-                        kind: Kind.FIELD,
-                        arguments: [],
-                        name: {
-                            kind: Kind.NAME,
-                            value: value.name,
-                        },
-                    };
-                    selectionsNode.push(node);
-                }
+            R.uniq([
+                model.info.pk,
+                ...model.info.relations.map((i) => i.childKey),
+            ]).map((i) => {
+                const node: FieldNode = {
+                    kind: Kind.FIELD,
+                    arguments: [],
+                    name: {
+                        kind: Kind.NAME,
+                        value: i,
+                    },
+                };
+                selectionsNode.push(node);
             });
 
             (
@@ -459,11 +459,13 @@ function join<model>(
         //   queryBuilder.leftJoin("(SELECT 1)", "dummy", "TRUE LEFT JOIN LATERAL (SELECT * FROM bookings bk WHERE bt.startTime < bk.endTime) bk ON bk.clinicId = bt.clinicId");
         if (operation === 'lateral') {
         } else {
-            sql.leftJoin(
-                `${model.alias}.${ChildtableName}`,
-                as,
-                `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
-            );
+            if (sql.expressionMap.mainAlias) {
+                sql.leftJoin(
+                    `${model.alias}.${ChildtableName}`,
+                    as,
+                    `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
+                );
+            }
         }
         joinInfo.query = `${model.info.alias}.${parentKey} = ${ChildtableName}.${childKey} `;
         joinInfo.table = ChildtableName;

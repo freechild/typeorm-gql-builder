@@ -15,6 +15,7 @@ import {
     print,
     GraphQLOutputType,
     GraphQLObjectType,
+    GraphQLList,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -23,7 +24,12 @@ import { ObjMap } from 'graphql/jsutils/ObjMap';
 import { CreateDynamicSqlDto, Operation, SqlQuery } from './dto/sql.dto';
 import { getFieldQuery } from './sql/typeorm';
 import { BaseSqlService } from './base.service';
-import { getReturnModelInfo, getTableInfo, makeQuery } from './lib/common';
+import {
+    getReturnModelInfo,
+    getReturnType,
+    getTableInfo,
+    makeQuery,
+} from './lib/common';
 import {
     CustomGraphQLObjectType,
     CustomResolveInfo,
@@ -238,10 +244,11 @@ export class BuildDynamicSqlService<Model> {
                     fieldNodes,
                     fragments,
                     fields,
-                    returnType:
-                        returnType instanceof GraphQLObjectType
-                            ? 'Object'
-                            : 'Array',
+                    returnType: getReturnType(returnType),
+                    // getReturnModelInfo(returnType) instanceof
+                    // GraphQLObjectType
+                    //     ? 'Object'
+                    //     : 'Array',
                 }),
             };
         });

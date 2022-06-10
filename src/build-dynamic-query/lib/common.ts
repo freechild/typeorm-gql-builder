@@ -80,6 +80,7 @@ export function makeQuery({
     fragments,
     fields,
     returnType,
+    fieldsNode,
 }: {
     operation: OperationDefinitionNode;
     fieldNodes: FieldNode[];
@@ -88,6 +89,7 @@ export function makeQuery({
     };
     fields: any;
     returnType?: 'Array' | 'Object';
+    fieldsNode?: any;
 }): OperationNode {
     const query = { ...R.clone(operation) };
     const customFieldNodes = R.clone(fieldNodes);
@@ -107,7 +109,7 @@ export function makeQuery({
     );
 
     query.selectionSet.selections = customFieldNodes;
-    return { query, fragmentsQuery, fragments, fields, returnType };
+    return { query, fragmentsQuery, fragments, fields, returnType, fieldsNode };
 }
 
 function findUsingValues(

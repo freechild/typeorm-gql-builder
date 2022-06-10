@@ -245,10 +245,7 @@ export class BuildDynamicSqlService<Model> {
                     fragments,
                     fields,
                     returnType: getReturnType(returnType),
-                    // getReturnModelInfo(returnType) instanceof
-                    // GraphQLObjectType
-                    //     ? 'Object'
-                    //     : 'Array',
+                    fieldsNode: tableInfo.fields,
                 }),
             };
         });

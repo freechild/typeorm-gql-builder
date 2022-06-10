@@ -16,3 +16,5 @@ export {
     where as makeWhere,
     fieldParser,
 } from './build-dynamic-query/sql/typeorm';
+
+export { getReturnModelInfo } from './build-dynamic-query/lib/common';

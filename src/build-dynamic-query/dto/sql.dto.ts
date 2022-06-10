@@ -1,4 +1,8 @@
-import { FragmentDefinitionNode, OperationDefinitionNode } from 'graphql';
+import {
+    FragmentDefinitionNode,
+    GraphQLFieldMap,
+    OperationDefinitionNode,
+} from 'graphql';
 import { QueryBuilder } from 'typeorm';
 import { CustomGraphQLObjectType } from './customGraphQLObjectType.dto';
 
@@ -14,6 +18,7 @@ export interface OperationNode {
         [key: string]: any;
     };
     returnType: 'Array' | 'Object';
+    fieldsNode?: GraphQLFieldMap<any, any>;
 }
 
 export class CreateDynamicSqlDto {

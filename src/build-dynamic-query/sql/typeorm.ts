@@ -116,7 +116,7 @@ export function fieldParser(
             let selectionsNode = [];
             (
                 model.gqlNode.query.selectionSet.selections[0] as FieldNode
-            ).selectionSet.selections.map<any>((i) => {
+            ).selectionSet?.selections.map<any>((i) => {
                 selectionsNode.push(i);
             });
 
@@ -135,9 +135,14 @@ export function fieldParser(
                 selectionsNode.push(node);
             });
 
-            (
-                model.gqlNode.query.selectionSet.selections[0] as FieldNode
-            ).selectionSet.selections = [...selectionsNode];
+            if (
+                (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
+                    .selectionSet
+            ) {
+                (
+                    model.gqlNode.query.selectionSet.selections[0] as FieldNode
+                ).selectionSet.selections = [...selectionsNode];
+            }
 
             if (type === 'mysql') {
                 sql.addSelect(`

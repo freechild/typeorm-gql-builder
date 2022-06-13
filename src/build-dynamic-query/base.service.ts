@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { BuildDynamicSqlService } from './build-dynamic-sql.service';
 import { CustomResolveInfo } from './dto/customGraphQLObjectType.dto';
-import { Operation, SqlQuery, SqlRunner } from './dto/sql.dto';
+import { Operation, OperationNode, SqlQuery, SqlRunner } from './dto/sql.dto';
 import { GqlError } from './filters/all-exceptions.filter';
 import { RunnerFunc, IRunnerFunc } from './runnerFuc';
 
@@ -373,13 +373,20 @@ export class BaseSqlService<Model>
             Parent
         >(customResolveInfo, fields, sql, parent);
 
-        if (!withExecute) return result[0];
-        const pk = await this.executeRunner(result[0]);
+        const currentNode = result[0];
+        if (!withExecute) return currentNode;
+        const pk = await this.executeRunner(currentNode);
         const raw = await this.repository.findOneBy(pk);
         return raw;
         // TODO: error case throw : only db error
     }
 
+    async updateData<T, Parent>(
+        customResolveInfo: CustomResolveInfo,
+        fields: T,
+        parent?: Parent,
+        sql?: EntityManager,
+    ): Promise<Boolean>;
     async updateData<T, Parent>(
         customResolveInfo: CustomResolveInfo,
         fields: T,
@@ -399,7 +406,7 @@ export class BaseSqlService<Model>
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
-    ): Promise<Model | SqlQuery> {
+    ): Promise<Model | SqlQuery | Boolean> {
         const alias = customResolveInfo.fieldNodes[0].alias;
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
         const result = this.buildDynamicSqlService.updateWithOutExecute<
@@ -408,17 +415,12 @@ export class BaseSqlService<Model>
         >(customResolveInfo, fields, sql, parent);
         (customResolveInfo.fieldNodes[0].alias as any) = alias;
 
-        if (!withExecute) return result[0];
+        const currentNode = result[0];
+        if (!withExecute) return currentNode;
 
-        const raw = await this.executeRunner(result[0]);
-        const thrower = () => {
-            throw new GqlError('target is not exist', '403');
-        };
-        return raw
-            ? Array.isArray(raw)
-                ? raw[0] ?? thrower()
-                : raw
-            : thrower();
+        const raw = await this.executeRunner(currentNode);
+
+        return setReturnType<Model>(currentNode.gqlNode.returnType, raw);
     }
 
     async deleteData<T, Parent>(
@@ -439,8 +441,15 @@ export class BaseSqlService<Model>
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
+        withExecute?: boolean,
+    ): Promise<T | T[]>;
+    async deleteData<T, Parent>(
+        customResolveInfo: CustomResolveInfo,
+        fields: T,
+        parent?: Parent,
+        sql?: EntityManager,
         withExecute: boolean = true,
-    ): Promise<Boolean | SqlQuery> {
+    ): Promise<Boolean | SqlQuery | T | T[]> {
         const alias = customResolveInfo.fieldNodes[0].alias;
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
         const result = this.buildDynamicSqlService.deleteWithOutExecute<
@@ -448,17 +457,47 @@ export class BaseSqlService<Model>
             Parent
         >(customResolveInfo, fields, sql, parent);
         (customResolveInfo.fieldNodes[0].alias as any) = alias;
+        const currentNode = result[0];
+        if (!withExecute) return currentNode;
 
-        if (!withExecute) return result[0];
+        const raw = await this.executeRunner(currentNode);
 
-        const raw = await this.executeRunner(result[0]);
-        const thrower = () => {
-            throw new GqlError('target is not exist', '403');
-        };
-        return raw
-            ? Array.isArray(raw)
-                ? raw[0] ?? thrower()
-                : raw
-            : thrower();
+        return setReturnType<T>(currentNode.gqlNode.returnType, raw);
     }
+}
+
+function setReturnType<T>(
+    returnType: OperationNode['returnType'],
+    raw: T | T[],
+) {
+    const thrower = (e?: Error) => {
+        if (e) throw new GqlError(`target is not exist (@${e})`, '403');
+        throw new GqlError(`target is not exist `, '403');
+    };
+
+    try {
+        switch (returnType) {
+            case 'Array':
+            case 'Object':
+                return raw
+                    ? Array.isArray(raw)
+                        ? raw[0] ?? thrower()
+                        : raw
+                    : thrower();
+            case 'Boolean':
+                return raw
+                    ? Array.isArray(raw)
+                        ? raw.length
+                            ? true
+                            : thrower()
+                        : true
+                    : thrower();
+            default:
+                break;
+        }
+    } catch (e) {
+        thrower(e);
+    }
+
+    return true;
 }

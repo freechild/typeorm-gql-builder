@@ -8,6 +8,7 @@ import {
     GraphQLSchema,
     OperationDefinitionNode,
     GraphQLList,
+    GraphQLScalarType,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -68,6 +69,8 @@ export function getReturnType(node: GraphQLOutputType) {
         return 'Array';
     } else if (node instanceof GraphQLObjectType) {
         return 'Object';
+    } else if (node instanceof GraphQLScalarType) {
+        return node.name;
     } else {
         return getReturnType((node as any).ofType);
     }
@@ -81,6 +84,7 @@ export function makeQuery({
     fields,
     returnType,
     fieldsNode,
+    ignoreNode,
 }: {
     operation: OperationDefinitionNode;
     fieldNodes: FieldNode[];
@@ -88,14 +92,19 @@ export function makeQuery({
         [key: string]: FragmentDefinitionNode;
     };
     fields: any;
-    returnType?: 'Array' | 'Object';
+    returnType?: 'Array' | 'Object' | 'Boolean';
     fieldsNode?: any;
+    ignoreNode?: string[];
 }): OperationNode {
     const query = { ...R.clone(operation) };
     const customFieldNodes = R.clone(fieldNodes);
     const customFragments = R.clone(fragments);
     const fragmentsQuery: string[] = [];
-    const usingKeys = findUsingValues(customFieldNodes, customFragments);
+    const usingKeys = findUsingValues(
+        customFieldNodes,
+        customFragments,
+        ignoreNode,
+    );
 
     if (customFragments) {
         Object.values(customFragments).map((v) => {
@@ -117,6 +126,7 @@ function findUsingValues(
     fragments?: {
         [key: string]: FragmentDefinitionNode;
     },
+    ignoreNode: string[] = [],
 ) {
     let valuesKey = [];
     let fragmentsKey = [];
@@ -139,12 +149,15 @@ function findUsingValues(
         if (target) {
             target.map((i: any, idx) => {
                 if (!i.selectionSet) delete i.alias;
-                // // Check:
+                // // Check: performance
                 else {
-                    delete target[idx];
+                    // join part
+                    if (ignoreNode.includes(i.name.value)) {
+                        delete target[idx];
+                    }
                 }
             });
-            const result = findUsingValues(target, fragments);
+            const result = findUsingValues(target, fragments, ignoreNode);
             valuesKey = valuesKey.concat(result.valuesKey);
             fragmentsKey = fragmentsKey.concat(result.fragmentsKey);
         }

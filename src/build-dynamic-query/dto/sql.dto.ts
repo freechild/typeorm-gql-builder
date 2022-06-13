@@ -17,7 +17,7 @@ export interface OperationNode {
     fields: {
         [key: string]: any;
     };
-    returnType: 'Array' | 'Object';
+    returnType: 'Array' | 'Object' | 'Boolean';
     fieldsNode?: GraphQLFieldMap<any, any>;
 }
 

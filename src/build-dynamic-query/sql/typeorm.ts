@@ -1,3 +1,4 @@
+import { getDirective } from '@graphql-tools/utils';
 import {
     FieldNode,
     GraphQLList,
@@ -5,6 +6,8 @@ import {
     GraphQLObjectType,
     Kind,
     getLocation,
+    SelectionNode,
+    SelectionSetNode,
 } from 'graphql';
 import * as R from 'ramda';
 import {
@@ -14,6 +17,8 @@ import {
     DeleteQueryBuilder,
     OrderByCondition,
 } from 'typeorm';
+import { getTableInfo } from '../lib/common';
+import { CustomGraphQLObjectType } from '../dto/customGraphQLObjectType.dto';
 import { CreateDynamicSqlDto, Operation, SqlQuery } from '../dto/sql.dto';
 import { GqlError } from '../filters/all-exceptions.filter';
 
@@ -113,32 +118,20 @@ export function fieldParser(
             group(model.selectSet, sql);
         } else {
             const alias = sql.expressionMap.mainAlias ? sql.alias : '';
-            let selectionsNode = [];
-            (
-                model.gqlNode.query.selectionSet.selections[0] as FieldNode
-            ).selectionSet?.selections.map<any>((i) => {
-                selectionsNode.push(i);
-            });
-
-            R.uniq([
-                model.info.pk,
-                ...model.info.relations.map((i) => i.childKey),
-            ]).map((i) => {
-                const node: FieldNode = {
-                    kind: Kind.FIELD,
-                    arguments: [],
-                    name: {
-                        kind: Kind.NAME,
-                        value: i,
-                    },
-                };
-                selectionsNode.push(node);
-            });
 
             if (
                 (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
                     .selectionSet
             ) {
+                const selectionsNode = addSelectionSetNode(
+                    (
+                        model.gqlNode.query.selectionSet
+                            .selections[0] as FieldNode
+                    ).selectionSet.selections as FieldNode[],
+                    model.gqlNode.schema,
+                    model.info,
+                );
+
                 (
                     model.gqlNode.query.selectionSet.selections[0] as FieldNode
                 ).selectionSet.selections = [...selectionsNode];
@@ -157,6 +150,53 @@ export function fieldParser(
     }
 
     return sql;
+}
+
+function addSelectionSetNode(
+    node: FieldNode[],
+    schema: CreateDynamicSqlDto['schema'],
+    info: CreateDynamicSqlDto['info'],
+    isGroup: Boolean = false,
+) {
+    let selectionsNode = [];
+
+    node.map((i) => {
+        const tempNode = { ...i };
+        if (tempNode.selectionSet) {
+            let selectionNode = tempNode.selectionSet.selections as FieldNode[];
+            const type = getTableInfo(
+                info.fields[tempNode.name.value].type,
+                schema,
+            );
+            const groupBy = tempNode.arguments.filter(
+                (i) => i.name.value === 'groupBy',
+            );
+            const childNode = addSelectionSetNode(
+                selectionNode,
+                schema,
+                type,
+                groupBy.length ? true : false,
+            );
+            delete tempNode.alias;
+            (tempNode.selectionSet.selections as any) = childNode;
+            selectionsNode.push(tempNode);
+        } else {
+            selectionsNode.push(tempNode);
+        }
+    });
+    if (!isGroup)
+        R.uniq([info.pk, ...info.relations.map((i) => i.childKey)]).map((i) => {
+            const node: FieldNode = {
+                kind: Kind.FIELD,
+                arguments: [],
+                name: {
+                    kind: Kind.NAME,
+                    value: i,
+                },
+            };
+            selectionsNode.push(node);
+        });
+    return selectionsNode;
 }
 
 export function where(

@@ -276,10 +276,11 @@ export class BaseSqlService<Model>
         parent?: Parent,
         sql?: EntityManager,
     ) {
-        return this.buildDynamicSqlService.normalFindAllWithOutExecute<
+        const worker = this.buildDynamicSqlService.normalFindAllWithOutExecute<
             T,
             Parent
         >(customResolveInfo, fields, sql, parent);
+        return worker;
         // TODO: error case throw : only db error
     }
 

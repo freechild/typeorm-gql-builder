@@ -1,6 +1,7 @@
 import {
     FragmentDefinitionNode,
     GraphQLFieldMap,
+    GraphQLSchema,
     OperationDefinitionNode,
 } from 'graphql';
 import { QueryBuilder } from 'typeorm';
@@ -19,6 +20,7 @@ export interface OperationNode {
     };
     returnType: 'Array' | 'Object' | 'Boolean';
     fieldsNode?: GraphQLFieldMap<any, any>;
+    schema: GraphQLSchema;
 }
 
 export class CreateDynamicSqlDto {

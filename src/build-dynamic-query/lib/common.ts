@@ -85,6 +85,7 @@ export function makeQuery({
     returnType,
     fieldsNode,
     ignoreNode,
+    schema,
 }: {
     operation: OperationDefinitionNode;
     fieldNodes: FieldNode[];
@@ -95,6 +96,7 @@ export function makeQuery({
     returnType?: 'Array' | 'Object' | 'Boolean';
     fieldsNode?: any;
     ignoreNode?: string[];
+    schema?: GraphQLSchema;
 }): OperationNode {
     const query = { ...R.clone(operation) };
     const customFieldNodes = R.clone(fieldNodes);
@@ -118,7 +120,15 @@ export function makeQuery({
     );
 
     query.selectionSet.selections = customFieldNodes;
-    return { query, fragmentsQuery, fragments, fields, returnType, fieldsNode };
+    return {
+        query,
+        fragmentsQuery,
+        fragments,
+        fields,
+        returnType,
+        fieldsNode,
+        schema,
+    };
 }
 
 function findUsingValues(

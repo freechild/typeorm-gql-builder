@@ -246,6 +246,7 @@ export class BuildDynamicSqlService<Model> {
                     fields,
                     returnType: getReturnType(returnType),
                     fieldsNode: tableInfo.fields,
+                    schema,
                 }),
             };
         });

@@ -16,6 +16,7 @@ import {
     GraphQLOutputType,
     GraphQLObjectType,
     GraphQLList,
+    OperationTypeNode,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -100,8 +101,8 @@ export class BuildDynamicSqlService<Model> {
         parentInfo?: any,
         fields?: any,
         exception?: any,
-        wildcard?: boolean,
         PassPrefixCode?: any,
+        operationType?: OperationTypeNode,
     ) {
         const prefixCode = PassPrefixCode ? PassPrefixCode : 64;
         let bin = fieldNodes.map((node: FieldNode): CreateDynamicSqlDto => {
@@ -247,6 +248,7 @@ export class BuildDynamicSqlService<Model> {
                     returnType: getReturnType(returnType),
                     fieldsNode: tableInfo.fields,
                     schema,
+                    operationType,
                 }),
             };
         });
@@ -267,6 +269,7 @@ export class BuildDynamicSqlService<Model> {
             variableValues,
         }: CustomResolveInfo,
         fields: T,
+        operationType?: OperationTypeNode,
         parent?: any,
     ) {
         const parentFields = parentType.getFields();
@@ -293,7 +296,8 @@ export class BuildDynamicSqlService<Model> {
             getTableInfo(parentType.name, schema, parent),
             fields,
             null,
-            true,
+            0,
+            operationType,
         );
     }
 
@@ -407,7 +411,12 @@ export class BuildDynamicSqlService<Model> {
             .sql,
         parent?: Parent,
     ) {
-        const bin = this.getParserModel(customResolveInfo, fields, parent);
+        const bin = this.getParserModel(
+            customResolveInfo,
+            fields,
+            OperationTypeNode.QUERY,
+            parent,
+        );
         const result = this.makeSelectQuery(bin, 0, sql, this.getDbType);
         return result;
     }
@@ -419,7 +428,12 @@ export class BuildDynamicSqlService<Model> {
             .sql,
         parent?: Parent,
     ) {
-        const bin = this.getParserModel(customResolveInfo, fields, parent);
+        const bin = this.getParserModel(
+            customResolveInfo,
+            fields,
+            OperationTypeNode.MUTATION,
+            parent,
+        );
         const result = this.makeInsertQuery(
             bin,
             0,
@@ -437,7 +451,12 @@ export class BuildDynamicSqlService<Model> {
             .sql,
         parent?: Parent,
     ) {
-        const bin = this.getParserModel(customResolveInfo, fields, parent);
+        const bin = this.getParserModel(
+            customResolveInfo,
+            fields,
+            OperationTypeNode.MUTATION,
+            parent,
+        );
         const result = this.makeUpdateQuery(
             bin,
             0,
@@ -455,7 +474,12 @@ export class BuildDynamicSqlService<Model> {
             .sql,
         parent?: Parent,
     ) {
-        const bin = this.getParserModel(customResolveInfo, fields, parent);
+        const bin = this.getParserModel(
+            customResolveInfo,
+            fields,
+            OperationTypeNode.MUTATION,
+            parent,
+        );
         const result = this.makeDeleteQuery(bin, 0, sql, this.getDbType);
 
         return result;

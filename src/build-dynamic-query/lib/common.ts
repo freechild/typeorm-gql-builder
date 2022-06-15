@@ -9,6 +9,7 @@ import {
     OperationDefinitionNode,
     GraphQLList,
     GraphQLScalarType,
+    OperationTypeNode,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -86,6 +87,7 @@ export function makeQuery({
     fieldsNode,
     ignoreNode,
     schema,
+    operationType,
 }: {
     operation: OperationDefinitionNode;
     fieldNodes: FieldNode[];
@@ -97,8 +99,10 @@ export function makeQuery({
     fieldsNode?: any;
     ignoreNode?: string[];
     schema?: GraphQLSchema;
+    operationType?: OperationTypeNode;
 }): OperationNode {
     const query = { ...R.clone(operation) };
+    if (operationType) query.operation = operationType;
     const customFieldNodes = R.clone(fieldNodes);
     const customFragments = R.clone(fragments);
     const fragmentsQuery: string[] = [];

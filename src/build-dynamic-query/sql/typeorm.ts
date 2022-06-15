@@ -184,7 +184,7 @@ function addSelectionSetNode(
             selectionsNode.push(tempNode);
         }
     });
-    if (!isGroup)
+    if (!isGroup && info.pk) {
         R.uniq([info.pk, ...info.relations.map((i) => i.childKey)]).map((i) => {
             const node: FieldNode = {
                 kind: Kind.FIELD,
@@ -196,6 +196,7 @@ function addSelectionSetNode(
             };
             selectionsNode.push(node);
         });
+    }
     return selectionsNode;
 }
 

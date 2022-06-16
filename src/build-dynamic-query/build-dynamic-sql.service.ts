@@ -105,10 +105,21 @@ export class BuildDynamicSqlService<Model> {
         operationType?: OperationTypeNode,
     ) {
         const prefixCode = PassPrefixCode ? PassPrefixCode : 64;
+
         let bin = fieldNodes.map((node: FieldNode): CreateDynamicSqlDto => {
             let cacheKeyValue: any | null;
             let cacheKey = tableInfo.pk;
             let parentPrimaryKey: string;
+            const gqlNode = makeQuery({
+                operation,
+                fieldNodes,
+                fragments,
+                fields: { ...fields },
+                returnType: getReturnType(returnType),
+                fieldsNode: tableInfo.fields,
+                schema,
+                operationType,
+            });
             const alias = node.alias
                 ? node.alias.value
                 : tableInfo.table
@@ -240,16 +251,7 @@ export class BuildDynamicSqlService<Model> {
                 cacheKeyValue,
                 cacheKey,
                 parentPrimaryKey,
-                gqlNode: makeQuery({
-                    operation,
-                    fieldNodes,
-                    fragments,
-                    fields,
-                    returnType: getReturnType(returnType),
-                    fieldsNode: tableInfo.fields,
-                    schema,
-                    operationType,
-                }),
+                gqlNode,
             };
         });
         bin = R.without([undefined], bin);

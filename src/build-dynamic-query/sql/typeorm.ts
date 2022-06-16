@@ -19,7 +19,12 @@ import {
 } from 'typeorm';
 import { getTableInfo } from '../lib/common';
 import { CustomGraphQLObjectType } from '../dto/customGraphQLObjectType.dto';
-import { CreateDynamicSqlDto, Operation, SqlQuery } from '../dto/sql.dto';
+import {
+    CreateDynamicSqlDto,
+    Operation,
+    OperationNode,
+    SqlQuery,
+} from '../dto/sql.dto';
 import { GqlError } from '../filters/all-exceptions.filter';
 
 interface JoinInfo {
@@ -119,24 +124,6 @@ export function fieldParser(
         } else {
             const alias = sql.expressionMap.mainAlias ? sql.alias : '';
 
-            if (
-                (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
-                    .selectionSet
-            ) {
-                const selectionsNode = addSelectionSetNode(
-                    (
-                        model.gqlNode.query.selectionSet
-                            .selections[0] as FieldNode
-                    ).selectionSet.selections as FieldNode[],
-                    model.gqlNode.schema,
-                    model.info,
-                );
-
-                (
-                    model.gqlNode.query.selectionSet.selections[0] as FieldNode
-                ).selectionSet.selections = [...selectionsNode];
-            }
-
             if (type === 'mysql') {
                 sql.addSelect(`
                 \`${alias}\`.*,
@@ -149,6 +136,24 @@ export function fieldParser(
         sql.limit(limit);
     }
 
+    if (
+        (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
+            .selectionSet
+    ) {
+        const selectionsNode = addSelectionSetNode(
+            (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
+                .selectionSet.selections as FieldNode[],
+            model.gqlNode.schema,
+            model.info,
+            model.gqlNode.fragments,
+            field.group,
+        );
+
+        (
+            model.gqlNode.query.selectionSet.selections[0] as FieldNode
+        ).selectionSet.selections = [...selectionsNode];
+    }
+
     return sql;
 }
 
@@ -156,34 +161,51 @@ function addSelectionSetNode(
     node: FieldNode[],
     schema: CreateDynamicSqlDto['schema'],
     info: CreateDynamicSqlDto['info'],
+    fragments: OperationNode['fragments'],
     isGroup: Boolean = false,
 ) {
     let selectionsNode = [];
+    const parserSelectionSetNode = (
+        node: FieldNode[],
+        selectionsNode: any[],
+    ) => {
+        node.map((i) => {
+            const tempNode = { ...i } as SelectionNode;
+            if (tempNode.kind === 'FragmentSpread') {
+                selectionsNode.push(tempNode);
+                const fragmentNode = fragments[tempNode.name.value].selectionSet
+                    .selections as FieldNode[];
+                parserSelectionSetNode(fragmentNode, selectionsNode);
+            } else if (tempNode.kind === 'Field') {
+                if (tempNode.selectionSet) {
+                    let selectionNode = tempNode.selectionSet
+                        .selections as FieldNode[];
+                    const type = getTableInfo(
+                        info.fields[tempNode.name.value].type,
+                        schema,
+                    );
+                    const groupBy = tempNode.arguments.filter(
+                        (i) => i.name.value === 'groupBy',
+                    );
+                    const childNode = addSelectionSetNode(
+                        selectionNode,
+                        schema,
+                        type,
+                        fragments,
+                        groupBy.length ? true : false,
+                    );
+                    delete (tempNode as any).alias;
+                    (tempNode.selectionSet.selections as any) = childNode;
+                    selectionsNode.push(tempNode);
+                } else {
+                    selectionsNode.push(tempNode);
+                }
+            }
+        });
+        return selectionsNode;
+    };
+    parserSelectionSetNode(node, selectionsNode);
 
-    node.map((i) => {
-        const tempNode = { ...i };
-        if (tempNode.selectionSet) {
-            let selectionNode = tempNode.selectionSet.selections as FieldNode[];
-            const type = getTableInfo(
-                info.fields[tempNode.name.value].type,
-                schema,
-            );
-            const groupBy = tempNode.arguments.filter(
-                (i) => i.name.value === 'groupBy',
-            );
-            const childNode = addSelectionSetNode(
-                selectionNode,
-                schema,
-                type,
-                groupBy.length ? true : false,
-            );
-            delete tempNode.alias;
-            (tempNode.selectionSet.selections as any) = childNode;
-            selectionsNode.push(tempNode);
-        } else {
-            selectionsNode.push(tempNode);
-        }
-    });
     if (!isGroup && info.pk) {
         R.uniq([info.pk, ...info.relations.map((i) => i.childKey)]).map((i) => {
             const node: FieldNode = {

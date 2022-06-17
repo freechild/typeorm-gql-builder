@@ -187,7 +187,7 @@ function addSelectionSetNode(
                         schema,
                     );
                     const groupBy = tempNode.arguments.filter(
-                        (i) => i.name.value === 'groupBy',
+                        (i) => i.name.value === 'group',
                     );
                     const childNode = addSelectionSetNode(
                         selectionNode,
@@ -199,6 +199,14 @@ function addSelectionSetNode(
                     (tempNode.selectionSet.selections as any) = childNode;
                     selectionsNode.push(tempNode);
                 } else {
+                    if(info.fields[i.name.value]) {
+                        const checkGroup = getDirective(
+                            schema,
+                            info.fields[i.name.value],
+                            'group'
+                        );
+                        if(checkGroup) isGroup = true;
+                    }                                        
                     selectionsNode.push(tempNode);
                 }
             }
@@ -217,7 +225,11 @@ function addSelectionSetNode(
                     value: i,
                 },
             };
-            selectionsNode.push(node);
+            if(!selectionsNode.find(j => j.name.value === i)) {
+                selectionsNode.push(node);
+            };
+            // if(selectionsNode.find(j => j.name.value === i)){}
+            
         });
     }
     return selectionsNode;

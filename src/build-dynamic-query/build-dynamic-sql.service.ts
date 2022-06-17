@@ -252,6 +252,16 @@ export class BuildDynamicSqlService<Model> {
                 cacheKey,
                 parentPrimaryKey,
                 gqlNode,
+                // gqlNode: makeQuery({
+                //     operation,
+                //     fieldNodes,
+                //     fragments,
+                //     fields: fieldsByOrinial,
+                //     returnType: getReturnType(returnType),
+                //     fieldsNode: tableInfo.fields,
+                //     schema,
+                //     operationType,
+                // }),
             };
         });
         bin = R.without([undefined], bin);
@@ -354,6 +364,7 @@ export class BuildDynamicSqlService<Model> {
                     tempWhere = tempReuslt.where;
                     prefixCode = tempReuslt.prefixCode;
                     tempReuslt.info.alias = tempReuslt.alias;
+                    tempReuslt.info.name = childModel.name;
                     info.childNode.push(tempReuslt.info);
                 } else {
                     if (key === 'OR' || key === 'AND') {

@@ -137,8 +137,10 @@ export function fieldParser(
     }
 
     if (
-        (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
-            .selectionSet
+        (
+            !sql.expressionMap.mainAlias &&
+            (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
+        ).selectionSet
     ) {
         const selectionsNode = addSelectionSetNode(
             (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
@@ -194,7 +196,6 @@ function addSelectionSetNode(
                         fragments,
                         groupBy.length ? true : false,
                     );
-                    delete (tempNode as any).alias;
                     (tempNode.selectionSet.selections as any) = childNode;
                     selectionsNode.push(tempNode);
                 } else {
@@ -528,8 +529,8 @@ function join<model>(
         if (operation === 'lateral') {
         } else {
             if (sql.expressionMap.mainAlias) {
-                sql.leftJoin(
-                    `${model.alias}.${ChildtableName}`,
+                sql.leftJoinAndSelect(
+                    `${ChildtableName}`,
                     as,
                     `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
                 );

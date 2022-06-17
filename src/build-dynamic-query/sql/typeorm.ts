@@ -167,54 +167,48 @@ function addSelectionSetNode(
     isGroup: Boolean = false,
 ) {
     let selectionsNode = [];
-    const parserSelectionSetNode = (
-        node: FieldNode[],
-        selectionsNode: any[],
-    ) => {
-        node.map((i) => {
-            const tempNode = { ...i } as SelectionNode;
-            if (tempNode.kind === 'FragmentSpread') {
-                selectionsNode.push(tempNode);
-                const fragmentNode = fragments[tempNode.name.value].selectionSet
+    const parserSelectionSetNode = (selectionsNode: any[], currentNode: FieldNode,) => {
+        const tempNode = { ...currentNode } as SelectionNode;
+        if (tempNode.kind === 'FragmentSpread') {
+            selectionsNode.push(tempNode);
+            const fragmentNode = fragments[tempNode.name.value].selectionSet
+                .selections as FieldNode[];
+            fragmentNode.reduce(parserSelectionSetNode, selectionsNode)
+        } else if (tempNode.kind === 'Field') {
+            if (tempNode.selectionSet) {
+                let selectionNode = tempNode.selectionSet
                     .selections as FieldNode[];
-                parserSelectionSetNode(fragmentNode, selectionsNode);
-            } else if (tempNode.kind === 'Field') {
-                if (tempNode.selectionSet) {
-                    let selectionNode = tempNode.selectionSet
-                        .selections as FieldNode[];
-                    const type = getTableInfo(
-                        info.fields[tempNode.name.value].type,
+                const type = getTableInfo(
+                    info.fields[tempNode.name.value].type,
+                    schema,
+                );
+                const groupBy = tempNode.arguments.filter(
+                    (i) => i.name.value === 'group',
+                );
+                const childNode = addSelectionSetNode(
+                    selectionNode,
+                    schema,
+                    type,
+                    fragments,
+                    groupBy.length ? true : false,
+                );
+                (tempNode.selectionSet.selections as any) = childNode;
+                selectionsNode.push(tempNode);
+            } else {
+                if (info.fields[currentNode.name.value]) {
+                    const checkGroup = getDirective(
                         schema,
+                        info.fields[currentNode.name.value],
+                        'group'
                     );
-                    const groupBy = tempNode.arguments.filter(
-                        (i) => i.name.value === 'group',
-                    );
-                    const childNode = addSelectionSetNode(
-                        selectionNode,
-                        schema,
-                        type,
-                        fragments,
-                        groupBy.length ? true : false,
-                    );
-                    (tempNode.selectionSet.selections as any) = childNode;
-                    selectionsNode.push(tempNode);
-                } else {
-                    if(info.fields[i.name.value]) {
-                        const checkGroup = getDirective(
-                            schema,
-                            info.fields[i.name.value],
-                            'group'
-                        );
-                        if(checkGroup) isGroup = true;
-                    }                                        
-                    selectionsNode.push(tempNode);
+                    if (checkGroup) isGroup = true;
                 }
+                selectionsNode.push(tempNode);
             }
-        });
+        }
         return selectionsNode;
-    };
-    parserSelectionSetNode(node, selectionsNode);
-
+    }
+    node.reduce(parserSelectionSetNode, selectionsNode)
     if (!isGroup && info.pk) {
         R.uniq([info.pk, ...info.relations.map((i) => i.childKey)]).map((i) => {
             const node: FieldNode = {
@@ -225,11 +219,10 @@ function addSelectionSetNode(
                     value: i,
                 },
             };
-            if(!selectionsNode.find(j => j.name.value === i)) {
+            if (!selectionsNode.find(j => j.name.value === i)) {
                 selectionsNode.push(node);
             };
-            // if(selectionsNode.find(j => j.name.value === i)){}
-            
+
         });
     }
     return selectionsNode;
@@ -410,9 +403,8 @@ function makeWhereQuery<model>(
             if (typeof whereValue === 'boolean') {
                 index += 1;
                 return {
-                    where: `${whereOption[0]} is ${
-                        whereValue ? 'not' : ''
-                    } null`,
+                    where: `${whereOption[0]} is ${whereValue ? 'not' : ''
+                        } null`,
                     params: [],
                     index,
                 };

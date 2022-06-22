@@ -142,10 +142,10 @@ export class BuildDynamicSqlService<Model> {
                     tableInfo.relations = [relations];
                 }
                 const relation = this.getRelationInfo(
-                    parentInfo.relations,
-                    node.name.value,
-                    parentInfo.name,
                     tableInfo.relations,
+                    parentInfo.name,
+                    node.name.value,
+                    parentInfo.relations,
                 );
 
                 const childKey = relation.childKey

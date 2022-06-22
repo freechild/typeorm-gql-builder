@@ -1,6 +1,6 @@
 {
   "name": "typeorm-gql-builder",
-  "version": "0.2.406",
+  "version": "0.2.407",
   "publisher": "jjy",
   "description": "gql query parser to make typeorm query builder",
   "main": "dist/index.js",

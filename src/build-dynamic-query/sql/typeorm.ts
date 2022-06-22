@@ -167,13 +167,16 @@ function addSelectionSetNode(
     isGroup: Boolean = false,
 ) {
     let selectionsNode = [];
-    const parserSelectionSetNode = (selectionsNode: any[], currentNode: FieldNode,) => {
+    const parserSelectionSetNode = (
+        selectionsNode: any[],
+        currentNode: FieldNode,
+    ) => {
         const tempNode = { ...currentNode } as SelectionNode;
         if (tempNode.kind === 'FragmentSpread') {
             selectionsNode.push(tempNode);
             const fragmentNode = fragments[tempNode.name.value].selectionSet
                 .selections as FieldNode[];
-            fragmentNode.reduce(parserSelectionSetNode, selectionsNode)
+            fragmentNode.reduce(parserSelectionSetNode, selectionsNode);
         } else if (tempNode.kind === 'Field') {
             if (tempNode.selectionSet) {
                 let selectionNode = tempNode.selectionSet
@@ -199,7 +202,7 @@ function addSelectionSetNode(
                     const checkGroup = getDirective(
                         schema,
                         info.fields[currentNode.name.value],
-                        'group'
+                        'group',
                     );
                     if (checkGroup) isGroup = true;
                 }
@@ -207,8 +210,8 @@ function addSelectionSetNode(
             }
         }
         return selectionsNode;
-    }
-    node.reduce(parserSelectionSetNode, selectionsNode)
+    };
+    node.reduce(parserSelectionSetNode, selectionsNode);
     if (!isGroup && info.pk) {
         R.uniq([info.pk, ...info.relations.map((i) => i.childKey)]).map((i) => {
             const node: FieldNode = {
@@ -219,10 +222,9 @@ function addSelectionSetNode(
                     value: i,
                 },
             };
-            if (!selectionsNode.find(j => j.name.value === i)) {
+            if (!selectionsNode.find((j) => j.name.value === i)) {
                 selectionsNode.push(node);
-            };
-
+            }
         });
     }
     return selectionsNode;
@@ -403,8 +405,9 @@ function makeWhereQuery<model>(
             if (typeof whereValue === 'boolean') {
                 index += 1;
                 return {
-                    where: `${whereOption[0]} is ${whereValue ? 'not' : ''
-                        } null`,
+                    where: `${whereOption[0]} is ${
+                        whereValue ? 'not' : ''
+                    } null`,
                     params: [],
                     index,
                 };
@@ -533,7 +536,9 @@ function join<model>(
         if (operation === 'lateral') {
         } else {
             if (sql.expressionMap.mainAlias) {
-                sql.leftJoinAndSelect(
+                sql.addSelect(
+                    `${model.info.alias}.${parentKey}`,
+                ).leftJoinAndSelect(
                     `${ChildtableName}`,
                     as,
                     `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
@@ -622,7 +627,11 @@ function group<model>(
     let i = 0;
     selectSet.map((key) => {
         let triggerFromGroupBy: 'groupBy' | 'addGroupBy' = 'groupBy';
-        let triggerFromSelect: 'select' | 'addSelect' = 'select';
+
+        let triggerFromSelect: 'select' | 'addSelect' = !sql.expressionMap
+            .selects.length
+            ? 'select'
+            : 'addSelect';
         if (i !== 0) {
             triggerFromGroupBy = 'addGroupBy';
             triggerFromSelect = 'addSelect';

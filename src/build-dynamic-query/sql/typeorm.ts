@@ -74,7 +74,7 @@ export function fieldParser(
         | SelectQueryBuilder<any>
         | UpdateQueryBuilder<any>
         | DeleteQueryBuilder<any>,
-    type?: string,
+    type: string = sql.connection?.options?.type,
 ) {
     const field = model.fields;
     let orderValue: string[] = [];
@@ -123,7 +123,6 @@ export function fieldParser(
             group(model.selectSet, sql);
         } else {
             const alias = sql.expressionMap.mainAlias ? sql.alias : '';
-
             if (type === 'mysql') {
                 sql.addSelect(`
                 \`${alias}\`.*,

@@ -36,6 +36,7 @@ import {
     CustomResolveInfo,
     TableInfo,
 } from './dto/customGraphQLObjectType.dto';
+import { GraphQLResolveInfo } from 'graphql/type';
 
 export class BuildDynamicSqlService<Model> {
     private sql: BaseSqlService<Model>;
@@ -90,12 +91,14 @@ export class BuildDynamicSqlService<Model> {
             schema,
             operation,
             returnType,
+            variableValues,
         }: {
             fieldNodes?: FieldNode[];
             fragments?: ObjMap<FragmentDefinitionNode>;
             schema: GraphQLSchema;
             operation: OperationDefinitionNode;
             returnType: GraphQLOutputType;
+            variableValues: GraphQLResolveInfo['variableValues'];
         },
         tableInfo?: TableInfo,
         parentInfo?: any,
@@ -114,7 +117,8 @@ export class BuildDynamicSqlService<Model> {
                 operation,
                 fieldNodes,
                 fragments,
-                fields: { ...fields },
+                // fields: { ...fields },
+                fields: variableValues,
                 returnType: getReturnType(returnType),
                 fieldsNode: tableInfo.fields,
                 schema,
@@ -252,16 +256,6 @@ export class BuildDynamicSqlService<Model> {
                 cacheKey,
                 parentPrimaryKey,
                 gqlNode,
-                // gqlNode: makeQuery({
-                //     operation,
-                //     fieldNodes,
-                //     fragments,
-                //     fields: fieldsByOrinial,
-                //     returnType: getReturnType(returnType),
-                //     fieldsNode: tableInfo.fields,
-                //     schema,
-                //     operationType,
-                // }),
             };
         });
         bin = R.without([undefined], bin);
@@ -303,6 +297,7 @@ export class BuildDynamicSqlService<Model> {
                 fragments,
                 schema,
                 returnType,
+                variableValues,
             },
             modelInfo,
             getTableInfo(parentType.name, schema, parent),

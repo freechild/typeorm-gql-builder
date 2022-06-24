@@ -104,7 +104,7 @@ export function makeQuery({
     const query = { ...R.clone(operation) };
     if (operationType) query.operation = operationType;
     const customFieldNodes = R.clone(fieldNodes);
-    const customFragments = R.clone(fragments);
+    const customFragments = { ...fragments };
     const fragmentsQuery: string[] = [];
     const usingKeys = findUsingValues(
         customFieldNodes,

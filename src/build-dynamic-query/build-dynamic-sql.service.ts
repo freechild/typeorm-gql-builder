@@ -117,7 +117,6 @@ export class BuildDynamicSqlService<Model> {
                 operation,
                 fieldNodes,
                 fragments,
-                // fields: { ...fields },
                 fields: variableValues,
                 returnType: getReturnType(returnType),
                 fieldsNode: tableInfo.fields,

@@ -283,7 +283,9 @@ function makeWhereQuery<model>(
     index: number,
     fields: CreateDynamicSqlDto['fields'],
     joinInfoList?: JoinInfo[],
-): { where: string; params: Object; index: number; orderValue?: string[] } {
+):
+    | { where: string; params: Object; index: number; orderValue?: string[] }
+    | undefined {
     if (R.isEmpty(whereValue)) {
         return;
     }
@@ -515,23 +517,9 @@ function join<model>(
             parentKey = relationModel.childKey;
             childKey = relationModel.parentKey ?? relationModel.childKey;
             ChildtableName = relationModel.table ?? ChildtableName;
-            // sql.leftJoin(
-            //     `${model.alias}.${ChildtableName}`,
-            //     as,
-            //     `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
-            // );
-
-            // joinInfo.query = `${model.info.alias}.${parentKey} = ${ChildtableName}.${childKey} `;
         } else {
-            // sql.leftJoin(
-            //     `${model.alias}.${ChildtableName}`,
-            //     as,
-            //     `${model.info.alias}.${model.info.pk} = ${as}.${model.info.pk} `,
-            // );
-            // joinInfo.query = `${model.info.alias}.${model.info.pk} = ${ChildtableName}.${model.info.pk} `;
         }
 
-        //   queryBuilder.leftJoin("(SELECT 1)", "dummy", "TRUE LEFT JOIN LATERAL (SELECT * FROM bookings bk WHERE bt.startTime < bk.endTime) bk ON bk.clinicId = bt.clinicId");
         if (operation === 'lateral') {
         } else {
             if (sql.expressionMap.mainAlias) {
@@ -566,11 +554,7 @@ function join<model>(
         orderValue.concat(result.orderValue);
         sql.where(result.query, result.params);
     }
-    // query = result.query;
-    // index = result.index;
-    // params = result.params;
-    // orderValue = result.orderValue;
-    // return { query, index, params, orderValue };
+
     return { orderValue };
 }
 

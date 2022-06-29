@@ -10,6 +10,7 @@ import { CustomGraphQLObjectType } from './customGraphQLObjectType.dto';
 type XPromise<T> = Promise<T>;
 
 export interface OperationNode {
+    nodeName: string;
     query: OperationDefinitionNode;
     fragments: {
         [key: string]: FragmentDefinitionNode;

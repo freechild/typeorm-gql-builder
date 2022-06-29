@@ -125,6 +125,7 @@ export function makeQuery({
 
     query.selectionSet.selections = customFieldNodes;
     return {
+        nodeName: fieldNodes[0].name.value,
         query,
         fragmentsQuery,
         fragments,

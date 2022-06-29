@@ -69,7 +69,7 @@ export class BaseSqlService<Model>
         withOutFnc: boolean = false,
     ): SqlQuery | IRunnerFunc {
         if (child) {
-            parent.children = parent.children.concat(child);
+            parent!.children! = parent.children!.concat(child);
         }
         if (withOutFnc) return parent;
         return new RunnerFunc(this, parent);
@@ -77,7 +77,9 @@ export class BaseSqlService<Model>
 
     // get Model
     get tableName(): string {
-        return this.repository.metadata.givenTableName;
+        return this.repository.metadata.givenTableName
+            ? this.repository.metadata.givenTableName
+            : '';
     }
 
     get pkName(): string {
@@ -160,10 +162,10 @@ export class BaseSqlService<Model>
             if (!runner) await queryRunner.startTransaction();
             model.typeorm.setQueryRunner(queryRunner);
             if (model.typeormForGetter)
-                model.typeormForGetter.setQueryRunner(queryRunner);
+                model.typeormForGetter!.setQueryRunner(queryRunner);
             const selfData = model.typeormForGetter
-                ? await model.typeormForGetter.execute()
-                : await model.typeorm.execute();
+                ? await model.typeormForGetter!.execute()
+                : await model.typeorm!.execute();
             if (selfData.length && model.children?.length) {
                 const parentData = selfData[0];
                 await Promise.all(
@@ -189,8 +191,8 @@ export class BaseSqlService<Model>
             if (!runner) await queryRunner.startTransaction();
             model.typeorm.setQueryRunner(queryRunner);
             if (model.typeormForGetter)
-                model.typeormForGetter.setQueryRunner(queryRunner);
-            const self = await model.typeorm.execute();
+                model.typeormForGetter!.setQueryRunner(queryRunner);
+            const self = await model.typeorm!.execute();
             const parentData = self.identifiers
                 ? self.identifiers[0]
                 : (await model.typeormForGetter.execute())[0];
@@ -368,7 +370,7 @@ export class BaseSqlService<Model>
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
-    ): Promise<Model | SqlQuery> {
+    ): Promise<Model | SqlQuery | Boolean> {
         const result = this.buildDynamicSqlService.insertWithOutExecute<
             T,
             Parent
@@ -378,8 +380,10 @@ export class BaseSqlService<Model>
         if (!withExecute) return currentNode;
         const pk = await this.executeRunner(currentNode);
         const raw = await this.repository.findOneBy(pk);
-        return raw;
-        // TODO: error case throw : only db error
+        return setReturnType<Model>(
+            currentNode.gqlNode.returnType,
+            await this.repository.findOneBy(pk),
+        );
     }
 
     async updateData<T, Parent>(

@@ -70,7 +70,8 @@ export class BaseSqlService<Model>
         withOutFnc: boolean = false,
     ): SqlQuery | IRunnerFunc {
         if (child) {
-            parent!.children! = parent.children!.concat(child);
+            if (!parent.children) parent.children = [];
+            parent!.children = parent.children.concat(child);
         }
         if (withOutFnc) return parent;
         return new RunnerFunc(this, parent);
@@ -107,6 +108,7 @@ export class BaseSqlService<Model>
         node.operation = Operation.Delete;
         if (parentKey) node.parentKeyName = parentKey;
         node.typeorm = this.getOption().delete().where(where);
+        node.typeormForGetter = this.getOption().where(where);
         return node;
     }
 
@@ -147,31 +149,33 @@ export class BaseSqlService<Model>
     }
 
     private bulkChildren(child: SqlQuery, parentData: Record<string, any>) {
-        for (const [key, value] of Object.entries(
-            child.typeorm.expressionMap.valuesSet,
-        )) {
-            if (value === '$parent$') {
-                if (child.typeormForGetter) {
-                    child.typeormForGetter.expressionMap.valuesSet[key] =
+        if (child.typeorm.expressionMap.valuesSet) {
+            for (const [key, value] of Object.entries(
+                child.typeorm.expressionMap.valuesSet,
+            )) {
+                if (value === '$parent$') {
+                    if (child.typeormForGetter) {
+                        child.typeormForGetter.expressionMap.valuesSet[key] =
+                            parentData[child.parentKeyName];
+                    }
+                    child.typeorm.expressionMap.valuesSet[key] =
                         parentData[child.parentKeyName];
                 }
-                child.typeorm.expressionMap.valuesSet[key] =
-                    parentData[child.parentKeyName];
+            }
+            for (const [key, value] of Object.entries(
+                child.typeorm.expressionMap.parameters,
+            )) {
+                if (value === '$parent$') {
+                    if (child.typeormForGetter) {
+                        child.typeormForGetter.expressionMap.parameters[key] =
+                            parentData[child.parentKeyName];
+                    }
+                    child.typeorm.expressionMap.parameters[key] =
+                        parentData[child.parentKeyName];
+                }
             }
         }
 
-        for (const [key, value] of Object.entries(
-            child.typeorm.expressionMap.parameters,
-        )) {
-            if (value === '$parent$') {
-                if (child.typeormForGetter) {
-                    child.typeormForGetter.expressionMap.parameters[key] =
-                        parentData[child.parentKeyName];
-                }
-                child.typeorm.expressionMap.parameters[key] =
-                    parentData[child.parentKeyName];
-            }
-        }
         return child;
     }
 

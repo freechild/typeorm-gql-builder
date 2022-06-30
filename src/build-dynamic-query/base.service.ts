@@ -6,6 +6,7 @@ import {
     QueryRunner,
     SelectQueryBuilder,
     DataSource,
+    FindOptionsWhere,
 } from 'typeorm';
 import { BuildDynamicSqlService } from './build-dynamic-sql.service';
 import { CustomResolveInfo } from './dto/customGraphQLObjectType.dto';
@@ -98,6 +99,24 @@ export class BaseSqlService<Model>
         return node;
     }
 
+    makeDeleteModel<Entity>(
+        where: FindOptionsWhere<Entity>,
+        parentKey?: string,
+    ) {
+        const node = this.getSqlModel;
+        node.operation = Operation.Delete;
+        if (parentKey) node.parentKeyName = parentKey;
+        node.typeorm = this.getOption().delete().where(where);
+        return node;
+    }
+
+    // makeInsertModel(dataModel: Model[] | Model, parentKey?: string) {
+    //     const node = this.getSqlModel;
+    //     node.operation = Operation.Insert;
+    //     if (parentKey) node.parentKeyName = parentKey;
+    //     node.typeorm = this.getOption().insert().values(dataModel);
+    //     return node;
+    // }
     // @deprecated
     async insertTransaction(
         dataModel: Model[] | Model,

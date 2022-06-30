@@ -1,3 +1,4 @@
+import R from 'ramda';
 import {
     Repository,
     EntityTarget,
@@ -394,10 +395,11 @@ export class BaseSqlService<Model>
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Model | SqlQuery | Boolean> {
+        const args = R.clone(fields);
         const result = this.buildDynamicSqlService.insertWithOutExecute<
             T,
             Parent
-        >(customResolveInfo, fields, sql, parent);
+        >(customResolveInfo, args, sql, parent);
 
         const currentNode = result[0];
         if (!withExecute) return currentNode;
@@ -436,11 +438,12 @@ export class BaseSqlService<Model>
         withExecute: boolean = true,
     ): Promise<Model | SqlQuery | Boolean> {
         const alias = customResolveInfo.fieldNodes[0].alias;
+        const args = R.clone(fields);
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
         const result = this.buildDynamicSqlService.updateWithOutExecute<
             T,
             Parent
-        >(customResolveInfo, fields, sql, parent);
+        >(customResolveInfo, args, sql, parent);
         (customResolveInfo.fieldNodes[0].alias as any) = alias;
 
         const currentNode = result[0];
@@ -478,12 +481,13 @@ export class BaseSqlService<Model>
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Boolean | SqlQuery | T | T[]> {
+        const args = R.clone(fields);
         const alias = customResolveInfo.fieldNodes[0].alias;
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
         const result = this.buildDynamicSqlService.deleteWithOutExecute<
             T,
             Parent
-        >(customResolveInfo, fields, sql, parent);
+        >(customResolveInfo, args, sql, parent);
         (customResolveInfo.fieldNodes[0].alias as any) = alias;
         const currentNode = result[0];
         if (!withExecute) return currentNode;

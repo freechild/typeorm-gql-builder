@@ -395,7 +395,7 @@ export class BaseSqlService<Model>
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Model | SqlQuery | Boolean> {
-        const args = R.clone(fields);
+        const args = { ...fields };
         const result = this.buildDynamicSqlService.insertWithOutExecute<
             T,
             Parent
@@ -438,7 +438,7 @@ export class BaseSqlService<Model>
         withExecute: boolean = true,
     ): Promise<Model | SqlQuery | Boolean> {
         const alias = customResolveInfo.fieldNodes[0].alias;
-        const args = R.clone(fields);
+        const args = { ...fields };
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
         const result = this.buildDynamicSqlService.updateWithOutExecute<
             T,
@@ -481,7 +481,7 @@ export class BaseSqlService<Model>
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Boolean | SqlQuery | T | T[]> {
-        const args = R.clone(fields);
+        const args = { ...fields };
         const alias = customResolveInfo.fieldNodes[0].alias;
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
         const result = this.buildDynamicSqlService.deleteWithOutExecute<

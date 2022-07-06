@@ -10,6 +10,11 @@ import {
     GraphQLList,
     GraphQLScalarType,
     OperationTypeNode,
+    ArgumentNode,
+    Kind,
+    ObjectFieldNode,
+    ListValueNode,
+    ValueNode,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -125,7 +130,7 @@ export function makeQuery({
 
     query.selectionSet.selections = customFieldNodes;
     return {
-        nodeName: fieldNodes[0].name.value,
+        nodeName: fieldNodes[0].name.value!,
         query,
         fragmentsQuery,
         fragments,
@@ -149,10 +154,8 @@ function findUsingValues(
     node.map((v: FieldNode | FragmentSpreadNode) => {
         let target: FieldNode[];
         if (v.kind !== 'FragmentSpread') {
-            v.arguments.map((arg) => {
-                if (arg.value.kind === 'Variable')
-                    valuesKey.push(arg.value.name.value);
-            });
+            argumentsParser(v.arguments as ArgumentNode[], valuesKey);
+
             if (v.selectionSet?.selections) {
                 target = v.selectionSet.selections as FieldNode[];
             }
@@ -181,4 +184,40 @@ function findUsingValues(
         valuesKey: R.uniq(valuesKey),
         fragmentsKey: R.uniq(fragmentsKey),
     };
+}
+
+function argumentsParser(
+    node: ArgumentNode[] | ObjectFieldNode[],
+    valuesKey: string[],
+) {
+    node.map((arg: ArgumentNode | ObjectFieldNode) => {
+        const kind = arg.value.kind;
+        switch (kind) {
+            case Kind.VARIABLE:
+                valuesKey.push(arg.value.name.value);
+                break;
+            case Kind.LIST:
+                (arg.value as ListValueNode).values;
+                valueNodeParser(
+                    (arg.value as ListValueNode).values as ValueNode[],
+                    valuesKey,
+                );
+                break;
+            case Kind.OBJECT:
+                argumentsParser(
+                    arg.value.fields as ObjectFieldNode[],
+                    valuesKey,
+                );
+                break;
+            default:
+                break;
+        }
+    });
+    return valuesKey;
+}
+
+function valueNodeParser(nodes: ValueNode[], valuesKey: string[]) {
+    nodes.map((node: ValueNode) => {
+        if (node.kind === Kind.VARIABLE) valuesKey.push(node.name.value);
+    });
 }

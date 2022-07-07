@@ -8,7 +8,11 @@ import {
     SelectQueryBuilder,
     DataSource,
     FindOptionsWhere,
+    UpdateResult,
 } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
+import { where as makeWhere } from './sql/typeorm';
+
 import { BuildDynamicSqlService } from './build-dynamic-sql.service';
 import { CustomResolveInfo } from './dto/customGraphQLObjectType.dto';
 import { Operation, OperationNode, SqlQuery, SqlRunner } from './dto/sql.dto';
@@ -113,14 +117,6 @@ export class BaseSqlService<Model>
         return node;
     }
 
-    // makeInsertModel(dataModel: Model[] | Model, parentKey?: string) {
-    //     const node = this.getSqlModel;
-    //     node.operation = Operation.Insert;
-    //     if (parentKey) node.parentKeyName = parentKey;
-    //     node.typeorm = this.getOption().insert().values(dataModel);
-    //     return node;
-    // }
-    // @deprecated
     async insertTransaction(
         dataModel: Model[] | Model,
         manager?: EntityManager,
@@ -140,6 +136,62 @@ export class BaseSqlService<Model>
                     .then((_e) => {
                         return _e;
                     });
+        } catch (e) {
+            throw e;
+        } finally {
+            if (!manager) {
+                sql.release();
+            }
+        }
+    }
+
+    async updateTransaction<T>(
+        option: T,
+        dataModel: QueryDeepPartialEntity<Model>,
+        manager?: EntityManager,
+    ): Promise<UpdateResult> {
+        const sql: EntityManager = manager
+            ? manager
+            : this.db.createQueryRunner().manager;
+        try {
+            const where = makeWhere(option);
+
+            if (dataModel)
+                return await sql
+                    .getRepository(this.repository.target)
+                    .createQueryBuilder()
+                    .update()
+                    .set({
+                        ...dataModel,
+                    })
+                    .where(where.query, where.params)
+                    .execute()
+                    .then((_e) => {
+                        return _e;
+                    });
+        } catch (e) {
+            throw e;
+        } finally {
+            if (!manager) {
+                sql.release();
+            }
+        }
+    }
+
+    async deleteTransaction(whereModel: Model, manager?: EntityManager) {
+        const sql: EntityManager = manager
+            ? manager
+            : this.db.createQueryRunner().manager;
+        try {
+            const where = makeWhere(whereModel, null);
+            if (whereModel)
+                return await sql
+                    .getRepository(this.repository.target)
+                    .createQueryBuilder()
+                    .delete()
+                    .from(this.repository.target)
+                    .where(where.query, where.params)
+                    .execute();
         } catch (e) {
             throw e;
         } finally {

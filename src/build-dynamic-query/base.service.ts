@@ -93,8 +93,10 @@ export class BaseSqlService<Model>
         return this.repository.metadata.primaryColumns[0].propertyAliasName;
     }
 
-    public getOption(_isDefault?: boolean) {
-        return this.repository.createQueryBuilder(this.tableName);
+    public getOption(_isDefault?: boolean, option?: any) {
+        const where = makeWhere(option, null);
+        const worker = this.repository.createQueryBuilder(this.tableName);
+        return option ? worker.where(where.query, where.params) : worker;
     }
 
     makeInsertModel(dataModel: Model[] | Model, parentKey?: string) {

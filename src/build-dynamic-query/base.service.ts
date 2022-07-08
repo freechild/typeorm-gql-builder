@@ -94,9 +94,12 @@ export class BaseSqlService<Model>
     }
 
     public getOption(_isDefault?: boolean, option?: any) {
-        const where = makeWhere(option, null);
         const worker = this.repository.createQueryBuilder(this.tableName);
-        return option ? worker.where(where.query, where.params) : worker;
+        if (option) {
+            const { query, params } = makeWhere(option, null);
+            return worker.where(query, params);
+        }
+        return worker;
     }
 
     makeInsertModel(dataModel: Model[] | Model, parentKey?: string) {

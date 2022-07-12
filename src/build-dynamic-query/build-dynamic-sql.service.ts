@@ -421,7 +421,7 @@ export class BuildDynamicSqlService<Model> {
         const bin = this.getParserModel(
             customResolveInfo,
             fields,
-            OperationTypeNode.QUERY,
+            customResolveInfo.operation.operation,
             parent,
         );
         const result = this.makeSelectQuery(bin, 0, sql, this.getDbType);

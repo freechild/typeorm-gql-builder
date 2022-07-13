@@ -421,7 +421,7 @@ export class BuildDynamicSqlService<Model> {
         const bin = this.getParserModel(
             customResolveInfo,
             fields,
-            customResolveInfo.operation.operation,
+            OperationTypeNode.QUERY,
             parent,
         );
         const result = this.makeSelectQuery(bin, 0, sql, this.getDbType);
@@ -575,7 +575,9 @@ export class BuildDynamicSqlService<Model> {
                 operation,
             );
             runner.values(data);
-            const [query, params] = runner.getQueryAndParameters();
+            const [query, params] = runner.expressionMap.mainAlias
+                ? runner.getQueryAndParameters()
+                : ['', []];
             return {
                 name,
                 query,
@@ -651,7 +653,9 @@ export class BuildDynamicSqlService<Model> {
                 );
             }
 
-            [query, params] = result.getQueryAndParameters();
+            [query, params] = result.expressionMap.mainAlias
+                ? result.getQueryAndParameters()
+                : ['', []];
 
             return {
                 name,
@@ -707,7 +711,9 @@ export class BuildDynamicSqlService<Model> {
                 null,
                 type,
             );
-            const [query, params] = runner.getQueryAndParameters();
+            const [query, params] = result.expressionMap.mainAlias
+                ? result.getQueryAndParameters()
+                : ['', []];
 
             return {
                 name,

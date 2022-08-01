@@ -100,13 +100,13 @@ export function fieldParser(
             !R.isNil(model.isJoin) &&
             sql instanceof SelectQueryBuilder
         ) {
-            const result = join(model, index, field, sql);
+            const result = join(model, index, field, sql, operation);
             orderValue = orderValue.concat(result.orderValue);
             if (sql.expressionMap.mainAlias) {
                 field.group = true;
             }
         } else {
-            const result = where(field.where, index, field);
+            const result = where(field.where, index, field, operation);
             sql.where(result.query, result.params);
             orderValue = orderValue.concat(result.orderValue);
         }
@@ -233,6 +233,7 @@ export function where(
     target: Object,
     index: number = 0,
     fields?: CreateDynamicSqlDto['fields'],
+    operation: Operation = Operation.Select,
     joinInfoList?: JoinInfo[],
     operator: 'AND' | 'OR' = 'AND',
 ) {
@@ -248,7 +249,14 @@ export function where(
             query += ` ${linkWord} (`;
             value.forEach((childValue: any, j: number) => {
                 linkWord = j > 0 ? key : '';
-                const result = where(childValue, index, fields, undefined, key);
+                const result = where(
+                    childValue,
+                    index,
+                    fields,
+                    operation,
+                    undefined,
+                    key,
+                );
                 query += ` ${linkWord} ${result.query}`;
                 params = R.mergeRight(params, result.params);
                 index = result.index;
@@ -263,6 +271,7 @@ export function where(
                 index,
                 fields,
                 joinInfoList,
+                operation,
             );
             if (result?.where) {
                 query += ` ${linkWord} ${result.where}`;
@@ -283,10 +292,14 @@ function makeWhereQuery<model>(
     index: number,
     fields: CreateDynamicSqlDto['fields'],
     joinInfoList?: JoinInfo[],
+    operation: Operation = Operation.Select,
 ):
     | { where: string; params: Object; index: number; orderValue?: string[] }
     | undefined {
     if (R.isEmpty(whereValue)) {
+        if (operation !== Operation.Select)
+            throw new GqlError(`${whereOption} is empty`, '400');
+
         return;
     }
     switch (whereOption[1]) {
@@ -498,6 +511,7 @@ function join<model>(
     index: number,
     fields: CreateDynamicSqlDto['fields'],
     sql: SelectQueryBuilder<model>,
+    operation: Operation = Operation.Select,
 ) {
     const isJoin = model.isJoin;
     const joinInfoList: JoinInfo[] = [];
@@ -550,7 +564,13 @@ function join<model>(
         }
     });
     if (model.fields?.where) {
-        const result = where(model.fields.where, index, fields, joinInfoList);
+        const result = where(
+            model.fields.where,
+            index,
+            fields,
+            operation,
+            joinInfoList,
+        );
         orderValue.concat(result.orderValue);
         sql.where(result.query, result.params);
     }

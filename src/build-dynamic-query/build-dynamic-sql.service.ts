@@ -17,6 +17,7 @@ import {
     GraphQLObjectType,
     GraphQLList,
     OperationTypeNode,
+    SelectionNode,
 } from 'graphql';
 import * as R from 'ramda';
 import { getDirective } from '@graphql-tools/utils';
@@ -37,8 +38,10 @@ import {
     TableInfo,
 } from './dto/customGraphQLObjectType.dto';
 import { GraphQLResolveInfo } from 'graphql/type';
+import { QueryDeepPartialEntity } from './dto/QueryPartialEntity';
+import { ObjectLiteral } from './dto/ObjectLiteral';
 
-export class BuildDynamicSqlService<Model> {
+export class BuildDynamicSqlService<Model extends ObjectLiteral> {
     private sql: BaseSqlService<Model>;
     constructor() {}
 
@@ -108,27 +111,27 @@ export class BuildDynamicSqlService<Model> {
         operationType?: OperationTypeNode,
     ) {
         const prefixCode = PassPrefixCode ? PassPrefixCode : 64;
-
-        let bin = fieldNodes.map((node: FieldNode): CreateDynamicSqlDto => {
+        const bin: CreateDynamicSqlDto[] = [];
+        fieldNodes?.map((node: FieldNode) => {
             let cacheKeyValue: any | null;
-            let cacheKey = tableInfo.pk;
-            let parentPrimaryKey: string;
+            let cacheKey = tableInfo!.pk;
+            let parentPrimaryKey = undefined;
             const gqlNode = makeQuery({
                 operation,
                 fieldNodes,
                 fragments,
                 fields: variableValues,
                 returnType: getReturnType(returnType),
-                fieldsNode: tableInfo.fields,
+                fieldsNode: tableInfo?.fields,
                 schema,
                 operationType,
             });
             const alias = node.alias
                 ? node.alias.value
-                : tableInfo.table
-                ? tableInfo.table
-                : tableInfo.name;
-            const table: string = tableInfo.table ?? tableInfo.name;
+                : tableInfo!.table
+                ? tableInfo!.table
+                : tableInfo!.name;
+            const table: string = tableInfo!.table ?? tableInfo!.name;
             if (!fields?.where) {
                 fields.where = {};
             }
@@ -139,13 +142,13 @@ export class BuildDynamicSqlService<Model> {
                 ) {
                     const relations = {
                         table: parentInfo.name,
-                        childKey: tableInfo.pk,
-                        parentKey: tableInfo.pk,
+                        childKey: tableInfo!.pk,
+                        parentKey: tableInfo!.pk,
                     };
-                    tableInfo.relations = [relations];
+                    tableInfo!.relations = [relations];
                 }
                 const relation = this.getRelationInfo(
-                    tableInfo.relations,
+                    tableInfo!.relations,
                     parentInfo.name,
                     node.name.value,
                     parentInfo.relations,
@@ -154,7 +157,7 @@ export class BuildDynamicSqlService<Model> {
                 const childKey = relation.childKey
                     ? relation.childKey
                     : relation.parentKey;
-                tableInfo['fk'] = childKey;
+                tableInfo!['fk'] = childKey;
                 cacheKeyValue = parentInfo?.data?.[relation.parentKey]
                     ? parentInfo.data[relation.parentKey]
                     : '';
@@ -170,13 +173,13 @@ export class BuildDynamicSqlService<Model> {
 
             const currentNode = parentInfo.fields[node.name.value];
             if (!R.isNil(exception)) {
-                if (!R.includes(tableInfo.name, exception)) return;
+                if (!R.includes(tableInfo!.name, exception)) return;
             }
             const argumentHash = (() => {
                 let isJoin = {};
                 let selfSchema: any;
                 let model = {};
-                node.arguments.map((argument: ArgumentNode) => {
+                node.arguments?.map((argument: ArgumentNode) => {
                     if (argument.name.value === 'where') {
                         const whereNode: any = R.find(
                             R.propEq('name', argument.name.value),
@@ -188,14 +191,16 @@ export class BuildDynamicSqlService<Model> {
                         const temp = this.whereParser(
                             fields.where,
                             { name: alias, info: tableInfo },
-                            null,
+                            undefined,
                             prefixCode,
                             schema,
                         );
-                        isJoin = temp.isJoin;
-                        fields[argument.name.value] = temp.where;
-                        temp.info.alias = alias;
-                        model = temp.info;
+                        if (temp) {
+                            isJoin = temp!.isJoin;
+                            fields[argument.name.value] = temp!.where;
+                            temp!.info.alias = alias;
+                            model = temp!.info;
+                        }
                     } else if (argument.name.value === 'data') {
                         fields[argument.name.value] = fields.data;
                     }
@@ -208,7 +213,7 @@ export class BuildDynamicSqlService<Model> {
             })();
 
             let selectSet: string[] = [];
-            let tempArr = [];
+            let tempArr: SelectionNode[] = [];
 
             if (!R.isNil(node.selectionSet)) {
                 node.selectionSet?.selections.map(
@@ -223,10 +228,11 @@ export class BuildDynamicSqlService<Model> {
                                 }
                                 return n.selectionSet !== undefined;
                             };
+
                             tempArr = tempArr.concat(
                                 R.filter(
                                     filter,
-                                    fragments[w.name.value].selectionSet
+                                    fragments![w.name.value].selectionSet
                                         .selections,
                                 ),
                             );
@@ -242,22 +248,24 @@ export class BuildDynamicSqlService<Model> {
                 );
             }
 
-            return {
+            bin.push({
                 alias,
                 table,
-                repo: tableInfo.repo,
+                repo: tableInfo!.repo,
                 name: node.name.value,
                 selectSet,
-                pk: tableInfo.pk,
+                pk: tableInfo!.pk,
                 ...argumentHash,
                 info: tableInfo,
                 cacheKeyValue,
                 cacheKey,
                 parentPrimaryKey,
                 gqlNode,
-            };
+            });
         });
-        bin = R.without([undefined], bin);
+
+        // return R.without([undefined], bin);
+
         return bin;
     }
 
@@ -310,7 +318,7 @@ export class BuildDynamicSqlService<Model> {
     private whereParser(
         obj: Object,
         model: Record<string, any>,
-        parent: Object,
+        parent: Object | undefined,
         prefixCode: number,
         schema: GraphQLSchema,
     ) {
@@ -346,7 +354,7 @@ export class BuildDynamicSqlService<Model> {
                         model.info.fields[key.split('__some')[0]];
 
                     const modelInfo = getTableInfo(childModel.type, schema);
-                    const tempReuslt = this.whereParser(
+                    const whereParser = this.whereParser(
                         obj[key],
                         { name: prefixName, info: modelInfo },
                         key,
@@ -354,26 +362,29 @@ export class BuildDynamicSqlService<Model> {
                         schema,
                     );
                     tempJoin[`${key}*AS*${prefixName}`] = {};
-                    tempJoin[`${key}*AS*${prefixName}`] = tempReuslt.isJoin;
-                    tempWhere = tempReuslt.where;
-                    prefixCode = tempReuslt.prefixCode;
-                    tempReuslt.info.alias = tempReuslt.alias;
-                    tempReuslt.info.name = childModel.name;
-                    info.childNode.push(tempReuslt.info);
+                    if (whereParser) {
+                        tempJoin[`${key}*AS*${prefixName}`] =
+                            whereParser!.isJoin;
+                        tempWhere = whereParser!.where;
+                        prefixCode = whereParser!.prefixCode;
+                        whereParser!.info.alias = whereParser!.alias;
+                        whereParser!.info.name = childModel.name;
+                        info.childNode.push(whereParser!.info);
+                    }
                 } else {
                     if (key === 'OR' || key === 'AND') {
                         tempWhere[key] = [];
-                        const filter = (x) => {
-                            const temp = this.whereParser(
+                        const filter = (x: {}) => {
+                            const whereParser = this.whereParser(
                                 x,
                                 model,
-                                null,
+                                undefined,
                                 prefixCode,
                                 schema,
                             );
-                            tempWhere[key].push(temp.where);
-                            tempJoin = R.merge(tempJoin, temp.isJoin);
-                            prefixCode = temp.prefixCode;
+                            tempWhere[key].push(whereParser!.where);
+                            tempJoin = R.merge(tempJoin, whereParser!.isJoin);
+                            prefixCode = whereParser!.prefixCode;
                         };
                         R.map(filter, obj[key]);
                     } else if (!parent)
@@ -384,17 +395,19 @@ export class BuildDynamicSqlService<Model> {
                 }
             } else if (key === 'OR' || key === 'AND') {
                 tempWhere[key] = [];
-                const filter = (x) => {
-                    const temp = this.whereParser(
+                const filter = (x: {}) => {
+                    const whereParser = this.whereParser(
                         x,
                         model,
-                        null,
+                        undefined,
                         prefixCode,
                         schema,
                     );
-                    tempWhere[key].push(temp.where);
-                    tempJoin = R.mergeRight(tempJoin, temp.isJoin);
-                    prefixCode = temp.prefixCode;
+                    if (whereParser) {
+                        tempWhere[key].push(whereParser.where);
+                        tempJoin = R.mergeRight(tempJoin, whereParser.isJoin);
+                        prefixCode = whereParser.prefixCode;
+                    }
                 };
                 R.map(filter, obj[key]);
             } else {
@@ -424,6 +437,7 @@ export class BuildDynamicSqlService<Model> {
             OperationTypeNode.QUERY,
             parent,
         );
+
         const result = this.makeSelectQuery(bin, 0, sql, this.getDbType);
         return result;
     }
@@ -492,10 +506,10 @@ export class BuildDynamicSqlService<Model> {
         return result;
     }
 
-    private getQueryBuilder<Model>(
-        table?: string,
-        alias?: string,
-        sql?: BaseSqlService<Model> | Repository<Model> | EntityManager,
+    private getQueryBuilder<Model extends ObjectLiteral>(
+        table: string,
+        alias: string,
+        sql: BaseSqlService<Model> | Repository<Model> | EntityManager,
     ) {
         let runner: SelectQueryBuilder<Model>;
         if (sql instanceof BaseSqlService && sql.target === '') {
@@ -509,10 +523,10 @@ export class BuildDynamicSqlService<Model> {
         return runner;
     }
 
-    makeSelectQuery<Model>(
+    makeSelectQuery<Model extends ObjectLiteral>(
         bin: CreateDynamicSqlDto[],
         index: number = 0,
-        sql?: BaseSqlService<Model> | Repository<Model> | EntityManager,
+        sql: BaseSqlService<Model> | Repository<Model> | EntityManager,
         type?: string,
     ): SqlQuery[] {
         const results = bin.map((model: CreateDynamicSqlDto) => {
@@ -528,7 +542,7 @@ export class BuildDynamicSqlService<Model> {
                 operation,
                 index,
                 runner,
-                null,
+                undefined,
                 type,
             );
             const [query, params] = result.expressionMap.mainAlias
@@ -551,11 +565,11 @@ export class BuildDynamicSqlService<Model> {
         return results;
     }
 
-    makeInsertQuery<Model>(
+    makeInsertQuery<Model extends ObjectLiteral>(
         bin: CreateDynamicSqlDto[],
         index: number = 1,
         schema: GraphQLSchema,
-        sql?: BaseSqlService<Model> | Repository<Model> | EntityManager,
+        sql: BaseSqlService<Model> | Repository<Model> | EntityManager,
         type?: string,
     ) {
         const result = bin.map((model: CreateDynamicSqlDto) => {
@@ -574,6 +588,7 @@ export class BuildDynamicSqlService<Model> {
                 schema,
                 operation,
             );
+
             runner.values(data);
             const [query, params] = runner.expressionMap.mainAlias
                 ? runner.getQueryAndParameters()
@@ -589,7 +604,7 @@ export class BuildDynamicSqlService<Model> {
                 repo: model.repo,
                 parentKeyName: model.parentPrimaryKey,
                 cacheKey: model.cacheKeyValue,
-                cacheKeyName: model.info.fk,
+                cacheKeyName: model.info?.fk,
                 typeorm: runner as QueryBuilder<Model>,
                 gqlNode: model.gqlNode,
             };
@@ -597,11 +612,11 @@ export class BuildDynamicSqlService<Model> {
         return result;
     }
 
-    makeUpdateQuery<Model>(
+    makeUpdateQuery<Model extends ObjectLiteral>(
         bin: CreateDynamicSqlDto[],
         index = 0,
         schema: GraphQLSchema,
-        sql?: BaseSqlService<Model> | Repository<Model> | EntityManager,
+        sql: BaseSqlService<Model> | Repository<Model> | EntityManager,
         type?: string,
     ): SqlQuery[] {
         const result = bin.map((model: CreateDynamicSqlDto) => {
@@ -610,7 +625,7 @@ export class BuildDynamicSqlService<Model> {
                 model.alias !== '' && model.alias ? model.alias : model.name;
             const name = model.name;
             model.table = model.table ?? model.name;
-            const where = model.fields.where;
+            const where = model.fields?.where;
             let query: string;
             let params: string[] = [];
             let result: QueryBuilder<Model>;
@@ -638,7 +653,7 @@ export class BuildDynamicSqlService<Model> {
                     operation,
                     index,
                     updateRunner,
-                    null,
+                    undefined,
                     type,
                 );
                 updateRunner.set(data);
@@ -648,7 +663,7 @@ export class BuildDynamicSqlService<Model> {
                     operation,
                     index,
                     selectRunner,
-                    null,
+                    undefined,
                     type,
                 );
             }
@@ -669,14 +684,14 @@ export class BuildDynamicSqlService<Model> {
                 repo: model.repo,
                 parentKeyName: model.parentPrimaryKey,
                 cacheKey: model.cacheKeyValue,
-                cacheKeyName: model.info.fk,
+                cacheKeyName: model.info!.fk,
                 typeorm: result as QueryBuilder<Model>,
                 typeormForGetter: getFieldQuery(
                     model,
                     operation,
                     index,
                     selectRunner,
-                    null,
+                    undefined,
                     type,
                 ),
                 gqlNode: model.gqlNode,
@@ -685,10 +700,10 @@ export class BuildDynamicSqlService<Model> {
         return result;
     }
 
-    makeDeleteQuery<Model>(
+    makeDeleteQuery<Model extends ObjectLiteral>(
         bin: CreateDynamicSqlDto[],
         index: number = 0,
-        sql?: BaseSqlService<Model> | Repository<Model> | EntityManager,
+        sql: BaseSqlService<Model> | Repository<Model> | EntityManager,
         type?: string,
     ) {
         const results = bin.map((model: CreateDynamicSqlDto) => {
@@ -708,7 +723,7 @@ export class BuildDynamicSqlService<Model> {
                 operation,
                 index,
                 runner,
-                null,
+                undefined,
                 type,
             );
             const [query, params] = result.expressionMap.mainAlias
@@ -730,7 +745,7 @@ export class BuildDynamicSqlService<Model> {
                     operation,
                     index,
                     this.getQueryBuilder<Model>(model.table, alias, sql),
-                    null,
+                    undefined,
                     type,
                 ),
                 gqlNode: model.gqlNode,
@@ -743,137 +758,141 @@ export class BuildDynamicSqlService<Model> {
         model: CreateDynamicSqlDto,
         schema: GraphQLSchema,
         operation: Operation,
-    ): [Model, SqlQuery[], Operation] {
-        const data: any = {};
+    ): [QueryDeepPartialEntity<Model>, SqlQuery[], Operation] {
+        const data: QueryDeepPartialEntity<Model> = {};
         const children: SqlQuery[] = [];
-        for (const [key, value] of Object.entries(model.fields.data)) {
+        for (const [key, value] of Object.entries(model.fields?.data)) {
             if (typeof value === 'object') {
-                for (const [subKey, subValue] of Object.entries(value)) {
-                    const child = subValue;
-                    if (subKey === QueryDataActionKey.create) {
-                        const childType = getTableInfo(
-                            key.capitalize(),
-                            schema,
-                        );
-                        const childRepo = this.sql.db.getRepository(
-                            childType.name,
-                        );
-
-                        const childInfo = model.info.relations.find(
-                            (i) => i.table === key,
-                        );
-                        if (childInfo) {
-                            const childNode = this.makeInsertQuery(
-                                child.map((v: IRelationModel) => {
-                                    return {
-                                        selectSet: [],
-                                        alias: childType
-                                            ? childType.name
-                                            : childInfo.table,
-                                        table: childType
-                                            ? childType.table
-                                            : childInfo.table,
-                                        name: childType
-                                            ? childType.name
-                                            : childInfo.table,
-                                        pk: childType.pk,
-                                        cacheKeyName: childInfo.childKey,
-                                        parentPrimaryKey: childInfo.childKey,
-                                        info: childType
-                                            ? {
-                                                  ...childType,
-                                                  fk: childInfo.parentKey,
-                                              }
-                                            : ({
-                                                  table: childInfo.table,
-                                                  pk: childInfo.childKey,
-                                                  fk: childInfo.parentKey,
-                                              } as CustomGraphQLObjectType),
-                                        fields: {
-                                            data: {
-                                                ...v,
-                                                [childInfo.parentKey]:
-                                                    '$parent$',
-                                            },
-                                        },
-                                    } as CreateDynamicSqlDto;
-                                }) as CreateDynamicSqlDto[],
-                                0,
+                if (value)
+                    for (const [subKey, subValue] of Object.entries(value)) {
+                        const child = subValue;
+                        if (subKey === QueryDataActionKey.create) {
+                            const childType = getTableInfo(
+                                key.capitalize(),
                                 schema,
-                                childRepo,
                             );
-                            childNode.map((v) => children.push(v));
-                        }
-                    } else if (subKey === QueryDataActionKey.update) {
-                        const childType = getTableInfo(
-                            key.capitalize(),
-                            schema,
-                        );
-                        const childRepo = this.sql.db.getRepository(
-                            childType.name,
-                        );
+                            const childRepo = this.sql.db.getRepository<any>(
+                                childType.name,
+                            );
 
-                        const childInfo = model.info.relations.find(
-                            (i) => i.table === key,
-                        );
-                        if (childInfo) {
-                            const childNode = this.makeUpdateQuery(
-                                child.map((v: IUpdate) => {
-                                    return {
-                                        selectSet: [],
-                                        alias: childType
-                                            ? childType.name
-                                            : childInfo.table,
-                                        table: childType
-                                            ? childType.table
-                                            : childInfo.table,
-                                        name: childType
-                                            ? childType.name
-                                            : childInfo.table,
-                                        cacheKeyName: childInfo.childKey,
-                                        parentPrimaryKey: childInfo.childKey,
-                                        pk: childType.pk,
-                                        info: childType
-                                            ? {
-                                                  ...childType,
-                                                  fk: childInfo.parentKey,
-                                              }
-                                            : ({
-                                                  table: childInfo.table,
-                                                  pk: childInfo.childKey,
-                                                  fk: childInfo.parentKey,
-                                              } as CustomGraphQLObjectType),
-                                        fields: {
-                                            data: v.data,
-                                            where: {
-                                                ...v.where,
-                                                [childInfo.parentKey]:
-                                                    '$parent$',
-                                            },
-                                        },
-                                    } as CreateDynamicSqlDto;
-                                }) as CreateDynamicSqlDto[],
-                                0,
-                                schema,
-                                childRepo,
+                            const childInfo = model.info?.relations?.find(
+                                (i) => i.table === key,
                             );
-                            childNode.map((v) => children.push(v));
-                        }
-                    } else if (subKey === QueryDataActionKey.connect) {
-                        const childInfo = model.info.relations.find(
-                            (i) => i.table === key,
-                        );
-                        if (child) {
-                            Object.keys(child).forEach((rootKey) => {
-                                if (R.isNil(childInfo)) {
-                                    data[rootKey] = child[rootKey];
-                                } else {
-                                    data[childInfo.childKey] = child[rootKey];
-                                }
-                            });
+                            if (childInfo) {
+                                const childNode = this.makeInsertQuery(
+                                    child.map((v: IRelationModel) => {
+                                        return {
+                                            selectSet: [],
+                                            alias: childType
+                                                ? childType.name
+                                                : childInfo.table,
+                                            table: childType
+                                                ? childType.table
+                                                : childInfo.table,
+                                            name: childType
+                                                ? childType.name
+                                                : childInfo.table,
+                                            pk: childType.pk,
+                                            cacheKeyName: childInfo.childKey,
+                                            parentPrimaryKey:
+                                                childInfo.childKey,
+                                            info: childType
+                                                ? {
+                                                      ...childType,
+                                                      fk: childInfo.parentKey,
+                                                  }
+                                                : ({
+                                                      table: childInfo.table,
+                                                      pk: childInfo.childKey,
+                                                      fk: childInfo.parentKey,
+                                                  } as CustomGraphQLObjectType),
+                                            fields: {
+                                                data: {
+                                                    ...v,
+                                                    [childInfo.parentKey]:
+                                                        '$parent$',
+                                                },
+                                            },
+                                        } as CreateDynamicSqlDto;
+                                    }) as CreateDynamicSqlDto[],
+                                    0,
+                                    schema,
+                                    childRepo,
+                                );
+                                childNode.map((v) => children.push(v));
+                            }
+                        } else if (subKey === QueryDataActionKey.update) {
+                            const childType = getTableInfo(
+                                key.capitalize(),
+                                schema,
+                            );
+                            const childRepo = this.sql.db.getRepository<any>(
+                                childType.name,
+                            );
+
+                            const childInfo = model.info?.relations?.find(
+                                (i) => i.table === key,
+                            );
+                            if (childInfo) {
+                                const childNode = this.makeUpdateQuery(
+                                    child.map((v: IUpdate) => {
+                                        return {
+                                            selectSet: [],
+                                            alias: childType
+                                                ? childType.name
+                                                : childInfo.table,
+                                            table: childType
+                                                ? childType.table
+                                                : childInfo.table,
+                                            name: childType
+                                                ? childType.name
+                                                : childInfo.table,
+                                            cacheKeyName: childInfo.childKey,
+                                            parentPrimaryKey:
+                                                childInfo.childKey,
+                                            pk: childType.pk,
+                                            info: childType
+                                                ? {
+                                                      ...childType,
+                                                      fk: childInfo.parentKey,
+                                                  }
+                                                : ({
+                                                      table: childInfo.table,
+                                                      pk: childInfo.childKey,
+                                                      fk: childInfo.parentKey,
+                                                  } as CustomGraphQLObjectType),
+                                            fields: {
+                                                data: v.data,
+                                                where: {
+                                                    ...v.where,
+                                                    [childInfo.parentKey]:
+                                                        '$parent$',
+                                                },
+                                            },
+                                        } as CreateDynamicSqlDto;
+                                    }) as CreateDynamicSqlDto[],
+                                    0,
+                                    schema,
+                                    childRepo,
+                                );
+                                childNode.map((v) => children.push(v));
+                            }
+                        } else if (subKey === QueryDataActionKey.connect) {
+                            const childInfo = model.info?.relations?.find(
+                                (i) => i.table === key,
+                            );
+                            if (child) {
+                                Object.keys(child).forEach((rootKey) => {
+                                    if (R.isNil(childInfo)) {
+                                        data[rootKey] = child[rootKey];
+                                    } else {
+                                        data[childInfo.childKey] =
+                                            child[rootKey];
+                                    }
+                                });
+                            }
                         }
                     }
-                }
             } else {
                 if (key === '_onlySearch') {
                     operation = Operation.Select;

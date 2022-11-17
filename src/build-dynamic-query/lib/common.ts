@@ -23,6 +23,7 @@ import {
     TableInfo,
 } from '../dto/customGraphQLObjectType.dto';
 import { OperationNode } from '../dto/sql.dto';
+import deepcopy from 'deepcopy';
 
 declare global {
     interface String {
@@ -47,7 +48,7 @@ export function getTableInfo(
         target = model;
     }
     const selfType = schema.getType(target);
-
+    if (!selfType) throw 'schema is not exist ' + target;
     const info = getDirective(
         schema,
         selfType,
@@ -96,7 +97,7 @@ export function makeQuery({
 }: {
     operation: OperationDefinitionNode;
     fieldNodes: FieldNode[];
-    fragments: {
+    fragments?: {
         [key: string]: FragmentDefinitionNode;
     };
     fields: any;
@@ -109,7 +110,7 @@ export function makeQuery({
     const query = { ...R.clone(operation) };
     if (operationType) query.operation = operationType;
     const customFieldNodes = R.clone(fieldNodes);
-    const customFragments = { ...fragments };
+    const customFragments = deepcopy(fragments) ?? {};
     const fragmentsQuery: string[] = [];
     const usingKeys = findUsingValues(
         customFieldNodes,
@@ -124,6 +125,8 @@ export function makeQuery({
         });
     }
 
+    if (!query.variableDefinitions) throw 'check';
+
     query.variableDefinitions = query.variableDefinitions.filter((i) =>
         usingKeys.valuesKey.includes(i.variable.name.value),
     );
@@ -135,7 +138,7 @@ export function makeQuery({
         fragmentsQuery,
         fragments,
         fields,
-        returnType,
+        returnType: returnType ?? 'Array',
         fieldsNode,
         schema,
     };
@@ -143,16 +146,16 @@ export function makeQuery({
 
 function findUsingValues(
     node: FieldNode[] | FragmentSpreadNode[],
-    fragments?: {
+    fragments: {
         [key: string]: FragmentDefinitionNode;
     },
     ignoreNode: string[] = [],
 ) {
-    let valuesKey = [];
-    let fragmentsKey = [];
+    let valuesKey: any[] = [];
+    let fragmentsKey: any[] = [];
 
     node.map((v: FieldNode | FragmentSpreadNode) => {
-        let target: FieldNode[];
+        let target: FieldNode[] = [];
         if (v.kind !== 'FragmentSpread') {
             argumentsParser(v.arguments as ArgumentNode[], valuesKey);
 
@@ -164,7 +167,7 @@ function findUsingValues(
             target = fragments[v.name.value].selectionSet
                 .selections as FieldNode[];
         }
-        if (target) {
+        if (target && target.length) {
             target.map((i: any, idx) => {
                 if (!i.selectionSet) delete i.alias;
                 // // Check: performance

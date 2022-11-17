@@ -1,14 +1,5 @@
 import { getDirective } from '@graphql-tools/utils';
-import {
-    FieldNode,
-    GraphQLList,
-    GraphQLNonNull,
-    GraphQLObjectType,
-    Kind,
-    getLocation,
-    SelectionNode,
-    SelectionSetNode,
-} from 'graphql';
+import { FieldNode, Kind, SelectionNode } from 'graphql';
 import * as R from 'ramda';
 import {
     QueryBuilder,
@@ -18,14 +9,14 @@ import {
     OrderByCondition,
 } from 'typeorm';
 import { getTableInfo } from '../lib/common';
-import { CustomGraphQLObjectType } from '../dto/customGraphQLObjectType.dto';
 import {
     CreateDynamicSqlDto,
+    Fields,
     Operation,
     OperationNode,
-    SqlQuery,
 } from '../dto/sql.dto';
 import { GqlError } from '../filters/all-exceptions.filter';
+import { ObjectLiteral } from '../dto/ObjectLiteral';
 
 interface JoinInfo {
     query?: string;
@@ -57,11 +48,11 @@ export function getFieldQuery(
         | SelectQueryBuilder<any>
         | UpdateQueryBuilder<any>
         | DeleteQueryBuilder<any>,
-    size?: number,
+    size?: number | undefined,
     type?: string,
 ) {
     const runner = sql as SelectQueryBuilder<any>;
-    if (size) model.fields.first = 1;
+    if (size && model.fields) model.fields.first = 1;
     const result = fieldParser(model, operation, index, runner, type);
     return result as QueryBuilder<any>;
 }
@@ -76,22 +67,21 @@ export function fieldParser(
         | DeleteQueryBuilder<any>,
     type: string = sql.connection?.options?.type,
 ) {
-    const field = model.fields;
+    const field: CreateDynamicSqlDto['fields'] = model.fields ?? new Fields();
     let orderValue: string[] = [];
-    let limit = 10;
+    let limit: number = 10;
     if (!R.isNil(model.selectSet) && !Array.isArray(model.selectSet))
         model.selectSet = [model.selectSet];
 
     if (!R.isNil(field.first) || !R.isNil(field.last)) {
-        limit = field.first ?? field.last;
+        limit = field.first ?? field.last ?? 10;
     }
-    if (field.after || field.before || field.skip) {
+    if (field.after || field.before) {
         if (field.after) {
             field.where[`${model.alias}.${model.pk}__gte`] = field.after;
         } else if (field.before) {
             field.where[`${model.alias}.${model.pk}__lte`] = field.before;
-        } else if (field.skip)
-            field.where[`${model.alias}.${model.pk}__gt`] = field.skip;
+        }
     }
 
     if (!R.isEmpty(field.where) || !R.isEmpty(model.isJoin)) {
@@ -113,7 +103,13 @@ export function fieldParser(
     }
 
     if (sql instanceof SelectQueryBuilder) {
-        sql.orderBy(order(model, field.orderBy, orderValue));
+        const orderKey = field.orderBy;
+        if (orderKey) {
+            sql.orderBy(order(model, orderKey, orderValue));
+        }
+        if (field.skip) {
+            sql.offset(field.skip);
+        }
         if (field.page) {
             // TODO:
             const page = (field.page - 1) * limit;
@@ -135,24 +131,26 @@ export function fieldParser(
         sql.limit(limit);
     }
 
+    const selectionSet = (
+        model.gqlNode?.query.selectionSet.selections[0] as FieldNode
+    ).selectionSet;
     if (
-        (
-            !sql.expressionMap.mainAlias &&
-            (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
-        ).selectionSet
+        !sql.expressionMap.mainAlias &&
+        selectionSet &&
+        model.gqlNode
+        // (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
     ) {
         const selectionsNode = addSelectionSetNode(
-            (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
-                .selectionSet.selections as FieldNode[],
+            selectionSet.selections as FieldNode[],
+            // (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
+            //     .selectionSet.selections as FieldNode[],
             model.gqlNode.schema,
             model.info,
             model.gqlNode.fragments,
             field.group,
         );
 
-        (
-            model.gqlNode.query.selectionSet.selections[0] as FieldNode
-        ).selectionSet.selections = [...selectionsNode];
+        selectionSet.selections = [...selectionsNode];
     }
 
     return sql;
@@ -165,7 +163,7 @@ function addSelectionSetNode(
     fragments: OperationNode['fragments'],
     isGroup: Boolean = false,
 ) {
-    let selectionsNode = [];
+    let selectionsNode: FieldNode[] = [];
     const parserSelectionSetNode = (
         selectionsNode: any[],
         currentNode: FieldNode,
@@ -173,18 +171,19 @@ function addSelectionSetNode(
         const tempNode = { ...currentNode } as SelectionNode;
         if (tempNode.kind === 'FragmentSpread') {
             selectionsNode.push(tempNode);
-            const fragmentNode = fragments[tempNode.name.value].selectionSet
+            const fragmentNode = fragments![tempNode.name.value].selectionSet
                 .selections as FieldNode[];
             fragmentNode.reduce(parserSelectionSetNode, selectionsNode);
         } else if (tempNode.kind === 'Field') {
             if (tempNode.selectionSet) {
                 let selectionNode = tempNode.selectionSet
                     .selections as FieldNode[];
+
                 const type = getTableInfo(
-                    info.fields[tempNode.name.value].type,
+                    info!.fields[tempNode.name.value].type,
                     schema,
                 );
-                const groupBy = tempNode.arguments.filter(
+                const groupBy = tempNode.arguments?.filter(
                     (i) => i.name.value === 'group',
                 );
                 const childNode = addSelectionSetNode(
@@ -192,12 +191,12 @@ function addSelectionSetNode(
                     schema,
                     type,
                     fragments,
-                    groupBy.length ? true : false,
+                    groupBy?.length ? true : false,
                 );
                 (tempNode.selectionSet.selections as any) = childNode;
                 selectionsNode.push(tempNode);
             } else {
-                if (info.fields[currentNode.name.value]) {
+                if (info?.fields[currentNode.name.value]) {
                     const checkGroup = getDirective(
                         schema,
                         info.fields[currentNode.name.value],
@@ -211,7 +210,7 @@ function addSelectionSetNode(
         return selectionsNode;
     };
     node.reduce(parserSelectionSetNode, selectionsNode);
-    if (!isGroup && info.pk) {
+    if (!isGroup && info?.pk && info.relations) {
         R.uniq([info.pk, ...info.relations.map((i) => i.childKey)]).map((i) => {
             const node: FieldNode = {
                 kind: Kind.FIELD,
@@ -224,6 +223,9 @@ function addSelectionSetNode(
             if (!selectionsNode.find((j) => j.name.value === i)) {
                 selectionsNode.push(node);
             }
+            // if (!selectionsNode.find((j) => j.name.value === i)) {
+            //     selectionsNode.push(node);
+            // }
         });
     }
     return selectionsNode;
@@ -277,7 +279,8 @@ export function where(
                 query += ` ${linkWord} ${result.where}`;
                 params = R.mergeRight(params, result.params);
                 index = result.index;
-                orderValue = orderValue.concat(result.orderValue);
+                if (result.orderValue)
+                    orderValue = orderValue.concat(result.orderValue);
             }
         }
         if (!R.isEmpty(query)) ++i;
@@ -459,7 +462,7 @@ function makeWhereQuery<model>(
             const regStr = /[-']/gi;
             const tempStr = whereValue.replace(regStr, ' ');
             index += 1;
-            fields.group = true;
+            fields!.group = true;
             return {
                 where: `to_tsquery(f_unaccent(:k${index}) || ':*') @@  ${whereOption[0]} `,
                 params: { [`k${index}`]: `'''${tempStr}'''` },
@@ -474,14 +477,16 @@ function makeWhereQuery<model>(
             index += 1;
             const splitKey = whereOption[0].split('.');
             const alias = splitKey[0];
-            const targetNode = joinInfoList.find(
+            const targetNode = joinInfoList?.find(
                 (node) => node.alias === alias,
             );
-            return {
-                where: `NOT EXISTS (SELECT 1 FROM ${targetNode.table} WHERE ${targetNode.query} AND ${splitKey[1]} IN (:...k${index}))`,
-                params: { [`k${index}`]: whereValue },
-                index,
-            };
+            if (targetNode)
+                return {
+                    where: `NOT EXISTS (SELECT 1 FROM ${targetNode.table} WHERE ${targetNode.query} AND ${splitKey[1]} IN (:...k${index}))`,
+                    params: { [`k${index}`]: whereValue },
+                    index,
+                };
+            else return;
         }
 
         case 'parent': {
@@ -506,7 +511,7 @@ function makeWhereQuery<model>(
     }
 }
 
-function join<model>(
+function join<model extends ObjectLiteral>(
     model: CreateDynamicSqlDto,
     index: number,
     fields: CreateDynamicSqlDto['fields'],
@@ -525,9 +530,9 @@ function join<model>(
         const relationModel = model.info?.relations?.find(
             (v: any) => v.table === ChildtableName,
         );
-        let parentKey = model.info.pk;
-        let childKey = model.info.pk;
-        if (model.info.relations && relationModel) {
+        let parentKey = model.info?.pk;
+        let childKey = model.info?.pk;
+        if (model.info?.relations && relationModel) {
             parentKey = relationModel.childKey;
             childKey = relationModel.parentKey ?? relationModel.childKey;
             ChildtableName = relationModel.table ?? ChildtableName;
@@ -537,30 +542,30 @@ function join<model>(
         if (operation === 'lateral') {
         } else {
             if (sql.expressionMap.mainAlias) {
-                sql.addSelect(
-                    `${model.info.alias}.${parentKey}`,
-                ).leftJoinAndSelect(
+                sql.addSelect(`${model.info?.alias}.${parentKey}`).leftJoin(
                     `${ChildtableName}`,
                     as,
-                    `${model.info.alias}.${parentKey} = ${as}.${childKey} `,
+                    `${model.info?.alias}.${parentKey} = ${as}.${childKey} `,
                 );
             }
         }
-        joinInfo.query = `${model.info.alias}.${parentKey} = ${ChildtableName}.${childKey} `;
+        joinInfo.query = `${model.info?.alias}.${parentKey} = ${ChildtableName}.${childKey} `;
         joinInfo.table = ChildtableName;
         joinInfo.alias = as;
         joinInfoList.push(joinInfo);
         if (R.isEmpty(isJoin[key]) === false) {
-            const self = model.info.childNode.find(
+            const self = model.info?.childNode.find(
                 (v) => v.name === ChildtableName,
             );
-            const childBin: CreateDynamicSqlDto = {
-                name: self.name,
-                alias: self.alias,
-                isJoin: isJoin[key],
-                info: self,
-            };
-            join(childBin, index, fields, sql);
+            if (self) {
+                const childBin: CreateDynamicSqlDto = {
+                    name: self.name,
+                    alias: self.alias,
+                    isJoin: isJoin[key],
+                    info: self,
+                };
+                join(childBin, index, fields, sql);
+            }
         }
     });
     if (model.fields?.where) {
@@ -580,9 +585,12 @@ function join<model>(
 
 function order(
     model: CreateDynamicSqlDto,
-    orderBy: string[] | string = model.pk,
+    orderBy: string[] | string,
     orderValue: string[] = [],
 ) {
+    if (model.pk && (orderBy || !orderBy.length)) {
+        orderBy = [model.pk];
+    }
     let result: OrderByCondition | string = {};
     if (!R.isNil(orderBy) && !Array.isArray(orderBy)) orderBy = [orderBy];
     if (!orderBy)
@@ -621,8 +629,8 @@ function order(
     return result;
 }
 
-function group<model>(
-    selectSet: string | string[],
+function group<model extends ObjectLiteral>(
+    selectSet: string | string[] = '*',
     sql: SelectQueryBuilder<model>,
 ) {
     if (!R.isNil(selectSet) && !Array.isArray(selectSet))

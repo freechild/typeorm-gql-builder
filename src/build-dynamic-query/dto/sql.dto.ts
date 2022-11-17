@@ -12,7 +12,7 @@ type XPromise<T> = Promise<T>;
 export interface OperationNode {
     nodeName: string;
     query: OperationDefinitionNode;
-    fragments: {
+    fragments?: {
         [key: string]: FragmentDefinitionNode;
     };
     fragmentsQuery: string[];
@@ -21,7 +21,7 @@ export interface OperationNode {
     };
     returnType: 'Array' | 'Object' | 'Boolean';
     fieldsNode?: GraphQLFieldMap<any, any>;
-    schema: GraphQLSchema;
+    schema?: GraphQLSchema;
 }
 
 export class CreateDynamicSqlDto {

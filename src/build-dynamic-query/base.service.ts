@@ -1,4 +1,3 @@
-import R from 'ramda';
 import {
     Repository,
     EntityTarget,
@@ -18,6 +17,8 @@ import { CustomResolveInfo } from './dto/customGraphQLObjectType.dto';
 import { Operation, OperationNode, SqlQuery, SqlRunner } from './dto/sql.dto';
 import { GqlError } from './filters/all-exceptions.filter';
 import { RunnerFunc, IRunnerFunc } from './runnerFuc';
+import deepcopy from 'deepcopy';
+import { ObjectLiteral } from './dto/ObjectLiteral';
 
 export interface IBaseSqlService {
     executeRunner(sql: SqlQuery): Promise<any>;
@@ -29,7 +30,7 @@ export interface IBaseSqlService {
     add(parent: SqlQuery, child?: SqlQuery | SqlQuery[]): IRunnerFunc;
 }
 
-export class BaseSqlService<Model>
+export class BaseSqlService<Model extends ObjectLiteral>
     extends Repository<Model>
     implements IBaseSqlService
 {
@@ -70,13 +71,13 @@ export class BaseSqlService<Model>
         withOutFnc?: boolean,
     ): SqlQuery;
     add(
-        parent?: SqlQuery,
+        parent: SqlQuery,
         child?: SqlQuery | SqlQuery[],
         withOutFnc: boolean = false,
     ): SqlQuery | IRunnerFunc {
         if (child) {
-            if (!parent.children) parent.children = [];
-            parent!.children = parent.children.concat(child);
+            if (!parent!.children) parent!.children = [];
+            parent!.children = parent!.children.concat(child);
         }
         if (withOutFnc) return parent;
         return new RunnerFunc(this, parent);
@@ -96,17 +97,23 @@ export class BaseSqlService<Model>
     public getOption(_isDefault?: boolean, option?: any) {
         const worker = this.repository.createQueryBuilder(this.tableName);
         if (option) {
-            const { query, params } = makeWhere(option, null);
+            const { query, params } = makeWhere(option, undefined);
             return worker.where(query, params);
         }
         return worker;
     }
 
-    makeInsertModel(dataModel: Model[] | Model, parentKey?: string) {
+    makeInsertModel(
+        dataModel:
+            | QueryDeepPartialEntity<Model>
+            | QueryDeepPartialEntity<Model>[],
+        parentKey?: string,
+    ) {
         const node = this.getSqlModel;
         node.operation = Operation.Insert;
         if (parentKey) node.parentKeyName = parentKey;
         node.typeorm = this.getOption().insert().values(dataModel);
+
         return node;
     }
 
@@ -123,9 +130,11 @@ export class BaseSqlService<Model>
     }
 
     async insertTransaction(
-        dataModel: Model[] | Model,
+        dataModel:
+            | QueryDeepPartialEntity<Model>
+            | QueryDeepPartialEntity<Model>[],
         manager?: EntityManager,
-    ): Promise<InsertResult> {
+    ): Promise<InsertResult | undefined> {
         const sql: EntityManager = manager
             ? manager
             : this.db.createQueryRunner().manager;
@@ -150,11 +159,11 @@ export class BaseSqlService<Model>
         }
     }
 
-    async updateTransaction<T>(
+    async updateTransaction<T extends Object>(
         option: T,
         dataModel: QueryDeepPartialEntity<Model>,
         manager?: EntityManager,
-    ): Promise<UpdateResult> {
+    ): Promise<UpdateResult | undefined> {
         const sql: EntityManager = manager
             ? manager
             : this.db.createQueryRunner().manager;
@@ -188,7 +197,7 @@ export class BaseSqlService<Model>
             ? manager
             : this.db.createQueryRunner().manager;
         try {
-            const where = makeWhere(whereModel, null);
+            const where = makeWhere(whereModel, undefined);
             if (whereModel)
                 return await sql
                     .getRepository(this.repository.target)
@@ -213,11 +222,11 @@ export class BaseSqlService<Model>
             )) {
                 if (value === '$parent$') {
                     if (child.typeormForGetter) {
-                        child.typeormForGetter.expressionMap.valuesSet[key] =
-                            parentData[child.parentKeyName];
+                        child.typeormForGetter.expressionMap.valuesSet![key] =
+                            parentData[child.parentKeyName!];
                     }
                     child.typeorm.expressionMap.valuesSet[key] =
-                        parentData[child.parentKeyName];
+                        parentData[child.parentKeyName!];
                 }
             }
             for (const [key, value] of Object.entries(
@@ -226,10 +235,10 @@ export class BaseSqlService<Model>
                 if (value === '$parent$') {
                     if (child.typeormForGetter) {
                         child.typeormForGetter.expressionMap.parameters[key] =
-                            parentData[child.parentKeyName];
+                            parentData[child.parentKeyName!];
                     }
                     child.typeorm.expressionMap.parameters[key] =
-                        parentData[child.parentKeyName];
+                        parentData[child.parentKeyName!];
                 }
             }
         }
@@ -276,7 +285,7 @@ export class BaseSqlService<Model>
             const self = await model.typeorm!.execute();
             const parentData = self.identifiers
                 ? self.identifiers[0]
-                : (await model.typeormForGetter.execute())[0];
+                : (await model.typeormForGetter?.execute())[0];
             if (model.children?.length) {
                 await Promise.all(
                     model.children.map(async (node: SqlQuery) => {
@@ -303,7 +312,7 @@ export class BaseSqlService<Model>
             model.typeorm.setQueryRunner(queryRunner);
             if (model.typeormForGetter)
                 model.typeormForGetter.setQueryRunner(queryRunner);
-            const parentData = await model.typeormForGetter.execute();
+            const parentData = await model.typeormForGetter?.execute();
             if (parentData?.length) {
                 await model.typeorm.execute();
                 if (model.children?.length) {
@@ -354,11 +363,12 @@ export class BaseSqlService<Model>
     }
 
     getQuery<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ) {
+        const customResolveInfo = deepcopy(_customResolveInfo);
         const worker = this.buildDynamicSqlService.normalFindAllWithOutExecute<
             T,
             Parent
@@ -368,25 +378,26 @@ export class BaseSqlService<Model>
     }
 
     async getData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ): Promise<Model[]>;
     async getData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute?: boolean,
     ): Promise<SqlQuery>;
     async getData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
     ) {
+        const customResolveInfo = deepcopy(_customResolveInfo);
         const result = this.buildDynamicSqlService.normalFindAllWithOutExecute<
             T,
             Parent
@@ -400,25 +411,26 @@ export class BaseSqlService<Model>
     }
 
     async getCount<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ): Promise<number>;
     async getCount<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute?: boolean,
     ): Promise<SqlQuery>;
     async getCount<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<number | SqlQuery> {
+        const customResolveInfo = deepcopy(_customResolveInfo);
         const result = this.buildDynamicSqlService.normalFindAllWithOutExecute<
             T,
             Parent
@@ -433,25 +445,26 @@ export class BaseSqlService<Model>
     }
 
     async createData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ): Promise<Model>;
     async createData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute?: boolean,
     ): Promise<SqlQuery>;
     async createData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Model | SqlQuery | Boolean> {
+        const customResolveInfo = deepcopy(_customResolveInfo);
         const args = { ...fields };
         const result = this.buildDynamicSqlService.insertWithOutExecute<
             T,
@@ -463,37 +476,39 @@ export class BaseSqlService<Model>
         const pk = await this.executeRunner(currentNode);
         const raw = await this.repository.findOneBy(pk);
         return setReturnType<Model>(
-            currentNode.gqlNode.returnType,
-            await this.repository.findOneBy(pk),
+            currentNode.gqlNode!.returnType,
+            raw,
+            // await this.repository.findOneBy(pk),
         );
     }
 
     async updateData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ): Promise<Boolean>;
     async updateData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ): Promise<Model>;
     async updateData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute?: boolean,
     ): Promise<SqlQuery>;
     async updateData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Model | SqlQuery | Boolean> {
+        const customResolveInfo = deepcopy(_customResolveInfo);
         const alias = customResolveInfo.fieldNodes[0].alias;
         const args = { ...fields };
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
@@ -508,36 +523,37 @@ export class BaseSqlService<Model>
 
         const raw = await this.executeRunner(currentNode);
 
-        return setReturnType<Model>(currentNode.gqlNode.returnType, raw);
+        return setReturnType<Model>(currentNode.gqlNode!.returnType, raw);
     }
 
     async deleteData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
     ): Promise<Boolean>;
     async deleteData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute?: boolean,
     ): Promise<SqlQuery>;
     async deleteData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute?: boolean,
     ): Promise<T | T[]>;
     async deleteData<T, Parent>(
-        customResolveInfo: CustomResolveInfo,
+        _customResolveInfo: CustomResolveInfo,
         fields: T,
         parent?: Parent,
         sql?: EntityManager,
         withExecute: boolean = true,
     ): Promise<Boolean | SqlQuery | T | T[]> {
+        const customResolveInfo = deepcopy(_customResolveInfo);
         const args = { ...fields };
         const alias = customResolveInfo.fieldNodes[0].alias;
         (customResolveInfo.fieldNodes[0].alias as any) = undefined;
@@ -551,13 +567,13 @@ export class BaseSqlService<Model>
 
         const raw = await this.executeRunner(currentNode);
 
-        return setReturnType<T>(currentNode.gqlNode.returnType, raw);
+        return setReturnType<T>(currentNode.gqlNode!.returnType, raw);
     }
 }
 
 function setReturnType<T>(
     returnType: OperationNode['returnType'],
-    raw: T | T[],
+    raw: T | T[] | null,
 ) {
     const thrower = (e?: Error) => {
         if (e) throw new GqlError(`target is not exist (@${e})`, '403');

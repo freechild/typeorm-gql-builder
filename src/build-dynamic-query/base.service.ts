@@ -15,7 +15,6 @@ import { where as makeWhere } from './sql/typeorm';
 import { BuildDynamicSqlService } from './build-dynamic-sql.service';
 import { CustomResolveInfo } from './dto/customGraphQLObjectType.dto';
 import { Operation, OperationNode, SqlQuery, SqlRunner } from './dto/sql.dto';
-import { GqlError } from './filters/all-exceptions.filter';
 import { RunnerFunc, IRunnerFunc } from './runnerFuc';
 import deepcopy from 'deepcopy';
 import { ObjectLiteral } from './dto/ObjectLiteral';
@@ -354,7 +353,7 @@ export class BaseSqlService<Model extends ObjectLiteral>
                     break;
             }
         } catch (e) {
-            throw new GqlError(e, '400');
+            throw e;
         }
     }
 
@@ -576,8 +575,8 @@ function setReturnType<T>(
     raw: T | T[] | null,
 ) {
     const thrower = (e?: Error) => {
-        if (e) throw new GqlError(`target is not exist (@${e})`, '403');
-        throw new GqlError(`target is not exist `, '403');
+        if (e) throw `target is not exist (@${e})`;
+        throw `target is not exist `;
     };
 
     try {

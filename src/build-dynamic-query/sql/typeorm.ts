@@ -15,7 +15,7 @@ import {
     Operation,
     OperationNode,
 } from '../dto/sql.dto';
-import { GqlError } from '../filters/all-exceptions.filter';
+
 import { ObjectLiteral } from '../dto/ObjectLiteral';
 
 interface JoinInfo {
@@ -300,8 +300,7 @@ function makeWhereQuery<model>(
     | { where: string; params: Object; index: number; orderValue?: string[] }
     | undefined {
     if (R.isEmpty(whereValue)) {
-        if (operation !== Operation.Select)
-            throw new GqlError(`${whereOption} is empty`, '400');
+        if (operation !== Operation.Select) throw `${whereOption} is empty`;
 
         return;
     }
@@ -593,11 +592,7 @@ function order(
     }
     let result: OrderByCondition | string = {};
     if (!R.isNil(orderBy) && !Array.isArray(orderBy)) orderBy = [orderBy];
-    if (!orderBy)
-        throw new GqlError(
-            `define Directives model first (@${model.name})`,
-            '400',
-        );
+    if (!orderBy) throw `define Directives model first (@${model.name})`;
     orderBy.map((order) => {
         const [key, direction] = order.split('__');
         if (typeof result === 'string') return;

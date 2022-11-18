@@ -1,6 +1,6 @@
 {
   "name": "typeorm-gql-builder",
-  "version": "0.2.434",
+  "version": "0.2.435",
   "publisher": "jjy",
   "description": "gql query parser to make typeorm query builder",
   "main": "dist/index.js",
@@ -23,7 +23,6 @@
     "typescript": "^5.0.0-dev.20221116"
   },
   "dependencies": {
-    "apollo-server-express": "^3.7.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.13.2",
     "deepcopy": "^2.1.0",

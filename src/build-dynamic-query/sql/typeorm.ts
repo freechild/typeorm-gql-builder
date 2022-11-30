@@ -587,7 +587,7 @@ function order(
     orderBy: string[] | string,
     orderValue: string[] = [],
 ) {
-    if (model.pk && (orderBy || !orderBy.length)) {
+    if (model.pk && (!orderBy || !orderBy.length)) {
         orderBy = [model.pk];
     }
     let result: OrderByCondition | string = {};

@@ -131,17 +131,16 @@ export function fieldParser(
         sql.limit(limit);
     }
 
-    const selectionSet = (
-        model.gqlNode?.query.selectionSet.selections[0] as FieldNode
-    ).selectionSet;
     if (
         !sql.expressionMap.mainAlias &&
-        selectionSet &&
-        model.gqlNode
-        // (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
+        model.gqlNode &&
+        (model.gqlNode?.query.selectionSet?.selections[0] as FieldNode)
     ) {
+        const selectionSet = (
+            model.gqlNode?.query.selectionSet.selections[0] as FieldNode
+        ).selectionSet;
         const selectionsNode = addSelectionSetNode(
-            selectionSet.selections as FieldNode[],
+            selectionSet?.selections as FieldNode[],
             // (model.gqlNode.query.selectionSet.selections[0] as FieldNode)
             //     .selectionSet.selections as FieldNode[],
             model.gqlNode.schema,
@@ -149,8 +148,7 @@ export function fieldParser(
             model.gqlNode.fragments,
             field.group,
         );
-
-        selectionSet.selections = [...selectionsNode];
+        if (selectionSet) selectionSet.selections = [...selectionsNode];
     }
 
     return sql;
